@@ -8,6 +8,14 @@
   var els = {};
   var toastTimer = null;
 
+  function t(key, params) {
+    return I18N.t(key, params);
+  }
+
+  function count(unit, value) {
+    return I18N.count(unit, value);
+  }
+
   var LESSON_CONTROL = {
     student: 'studentId',
     date: 'date',
@@ -108,24 +116,22 @@
   /** 概览：应收 / 已收 / 待收 / 次数 / 总时长，支持本月与全年 */
   function renderStats(summary, period, key) {
     var isYear = period === 'year';
-    var prefix = isYear ? '全年' : '本月';
+    var periodKey = isYear ? 'year' : 'month';
 
     els.periodLabel.textContent = isYear ? Calc.yearLabel(key) : Calc.monthLabel(key);
-    els.statsHint.textContent = isYear
-      ? '按上课日期统计当前自然年'
-      : '按上课日期统计当前自然月';
+    els.statsHint.textContent = t('stats.hint.' + periodKey);
 
-    els.statReceivableLabel.textContent = prefix + '应收';
-    els.statPaidLabel.textContent = prefix + '已收';
-    els.statUnpaidLabel.textContent = prefix + '待收';
+    els.statReceivableLabel.textContent = t('stats.label.receivable.' + periodKey);
+    els.statPaidLabel.textContent = t('stats.label.paid.' + periodKey);
+    els.statUnpaidLabel.textContent = t('stats.label.unpaid.' + periodKey);
 
-    els.statReceivable.textContent = '¥' + Calc.formatMoney(summary.totalIncome);
-    els.statPaid.textContent = '¥' + Calc.formatMoney(summary.paidIncome);
-    els.statUnpaid.textContent = '¥' + Calc.formatMoney(summary.unpaidIncome);
-    els.statPaidSub.textContent = summary.paidCount + ' 节';
-    els.statUnpaidSub.textContent = summary.unpaidCount + ' 节';
+    els.statReceivable.textContent = I18N.formatCurrency(summary.totalIncome);
+    els.statPaid.textContent = I18N.formatCurrency(summary.paidIncome);
+    els.statUnpaid.textContent = I18N.formatCurrency(summary.unpaidIncome);
+    els.statPaidSub.textContent = count('lessons', summary.paidCount);
+    els.statUnpaidSub.textContent = count('lessons', summary.unpaidCount);
 
-    els.statCount.textContent = summary.count + ' 节';
+    els.statCount.textContent = count('lessons', summary.count);
     els.statDuration.textContent = summary.durationText;
 
     els.periodButtons.forEach(function (button) {
@@ -137,37 +143,44 @@
   }
 
   function renderCount(total) {
-    els.lessonCount.textContent = total + ' 条';
+    els.lessonCount.textContent = count('records', total);
   }
 
   /** 给列表项里的收款状态与操作按钮统一绑定数据 */
   function decorateLessonActions(node, lesson, name) {
     var paid = Calc.isPaid(lesson);
+    var dateText = I18N.formatDate(lesson.date);
     var status = node.querySelector('[data-field="status"]');
-    status.textContent = paid ? '已收款' : '待收款';
+    status.textContent = paid ? t('status.paid') : t('status.unpaid');
     status.classList.add(paid ? 'status-badge--paid' : 'status-badge--unpaid');
 
     var toggleButton = node.querySelector('[data-action="toggle-paid"]');
     toggleButton.dataset.id = lesson.id;
-    toggleButton.textContent = paid ? '改回待收' : '标记已收';
+    toggleButton.textContent = paid ? t('status.markUnpaid') : t('status.markPaid');
     toggleButton.setAttribute('aria-pressed', paid ? 'true' : 'false');
     toggleButton.setAttribute(
       'aria-label',
-      toggleButton.textContent + '：' + name + ' ' + lesson.date
+      t('status.toggleAria', {
+        action: toggleButton.textContent,
+        name: name,
+        date: dateText
+      })
     );
 
     var editButton = node.querySelector('[data-action="edit"]');
     editButton.dataset.id = lesson.id;
+    editButton.textContent = t('common.edit');
     editButton.setAttribute(
       'aria-label',
-      '编辑 ' + name + ' 在 ' + lesson.date + ' 的课程记录'
+      t('common.lessonEditAria', { name: name, date: dateText })
     );
 
     var deleteButton = node.querySelector('[data-action="delete"]');
     deleteButton.dataset.id = lesson.id;
+    deleteButton.textContent = t('common.delete');
     deleteButton.setAttribute(
       'aria-label',
-      '删除 ' + name + ' 在 ' + lesson.date + ' 的课程记录'
+      t('common.lessonDeleteAria', { name: name, date: dateText })
     );
   }
 
@@ -191,10 +204,12 @@
 
       node.dataset.id = lesson.id;
       node.querySelector('[data-field="student"]').textContent = name;
-      node.querySelector('[data-field="date"]').textContent = lesson.date;
+      node.querySelector('[data-field="date"]').textContent = I18N.formatDate(lesson.date);
       node.querySelector('[data-field="duration"]').textContent = Calc.minutesToText(lesson.duration);
-      node.querySelector('[data-field="rate"]').textContent = '¥' + Calc.formatMoney(lesson.rate) + '/小时';
-      node.querySelector('[data-field="income"]').textContent = '¥' + Calc.formatMoney(Calc.lessonIncome(lesson));
+      node.querySelector('[data-field="rate"]').textContent =
+        t('currency.perHour', { amount: I18N.formatCurrency(lesson.rate) });
+      node.querySelector('[data-field="income"]').textContent =
+        I18N.formatCurrency(Calc.lessonIncome(lesson));
 
       decorateLessonActions(node, lesson, name);
 
@@ -208,7 +223,7 @@
 
   /** 重画学生列表；editingId 用于高亮正在编辑的那一行 */
   function renderStudents(students, editingId) {
-    els.studentCount.textContent = students.length + ' 位';
+    els.studentCount.textContent = count('students', students.length);
     els.studentList.textContent = '';
 
     if (!students.length) {
@@ -229,10 +244,10 @@
       if (student.grade) meta.push(student.grade);
       if (student.subject) meta.push(student.subject);
       node.querySelector('[data-field="meta"]').textContent =
-        meta.length ? meta.join(' · ') : '未填写年级与科目';
+        meta.length ? meta.join(' · ') : t('students.metaFallback');
 
       node.querySelector('[data-field="rate"]').textContent =
-        '¥' + Calc.formatMoney(student.rate) + '/小时';
+        t('currency.perHour', { amount: I18N.formatCurrency(student.rate) });
 
       if (student.id === editingId) {
         node.classList.add('student--editing');
@@ -240,11 +255,19 @@
 
       var editButton = node.querySelector('[data-action="edit-student"]');
       editButton.dataset.id = student.id;
-      editButton.setAttribute('aria-label', '编辑学生 ' + student.name);
+      editButton.textContent = t('common.edit');
+      editButton.setAttribute(
+        'aria-label',
+        t('students.editAria', { name: student.name })
+      );
 
       var deleteButton = node.querySelector('[data-action="delete-student"]');
       deleteButton.dataset.id = student.id;
-      deleteButton.setAttribute('aria-label', '删除学生 ' + student.name);
+      deleteButton.textContent = t('common.delete');
+      deleteButton.setAttribute(
+        'aria-label',
+        t('students.deleteAria', { name: student.name })
+      );
 
       fragment.appendChild(node);
     });
@@ -265,11 +288,11 @@
     placeholder.value = '';
 
     if (students.length) {
-      placeholder.textContent = '请选择学生';
+      placeholder.textContent = t('lessonForm.student.placeholder');
       els.lessonStudent.disabled = false;
       els.studentHint.hidden = true;
     } else {
-      placeholder.textContent = '还没有学生，请先添加';
+      placeholder.textContent = t('lessonForm.student.empty');
       els.lessonStudent.disabled = true;
       els.studentHint.hidden = false;
     }
@@ -334,17 +357,20 @@
       rate >= 0;
 
     els.editIncomePreview.textContent = valid
-      ? '¥' + Calc.formatMoney(Calc.lessonIncome({ duration: duration, rate: rate }))
+      ? I18N.formatCurrency(Calc.lessonIncome({ duration: duration, rate: rate }))
       : '—';
   }
 
   /** 重建编辑弹窗里的学生下拉框（保留已被删除学生的昵称，避免编辑时丢失） */
-  function setEditStudentOptions(students, lesson) {
+  function setEditStudentOptions(students, lesson, preferredId) {
+    var currentId = typeof preferredId === 'string' ? preferredId : lesson.studentId;
     els.editStudent.textContent = '';
 
     var placeholder = document.createElement('option');
     placeholder.value = '';
-    placeholder.textContent = students.length ? '请选择学生' : '还没有学生';
+    placeholder.textContent = students.length
+      ? t('modal.student.placeholder')
+      : t('modal.student.empty');
     els.editStudent.appendChild(placeholder);
 
     var found = false;
@@ -357,18 +383,21 @@
       if (student.subject) label.push(student.subject);
       option.textContent = label.join(' · ');
 
-      if (student.id === lesson.studentId) found = true;
+      if (student.id === currentId) found = true;
       els.editStudent.appendChild(option);
     });
 
-    if (!found && lesson.studentId) {
+    if (!found && currentId) {
       var removedOption = document.createElement('option');
-      removedOption.value = lesson.studentId;
-      removedOption.textContent = (lesson.student || '原学生') + '（已删除）';
+      removedOption.value = currentId;
+      removedOption.textContent = t('modal.removedStudent', {
+        name: (currentId === lesson.studentId && lesson.student) ||
+          t('common.originalStudent')
+      });
       els.editStudent.appendChild(removedOption);
     }
 
-    els.editStudent.value = lesson.studentId || '';
+    els.editStudent.value = currentId || '';
   }
 
   /** 打开编辑弹窗，并自动填入当前记录的数据 */
@@ -393,6 +422,17 @@
     }
 
     els.editStudent.focus();
+  }
+
+  function refreshLessonDialogLanguage(lesson, students) {
+    if (
+      !els.lessonDialog ||
+      (!els.lessonDialog.open && !els.lessonDialog.hasAttribute('open'))
+    ) {
+      return;
+    }
+    setEditStudentOptions(students, lesson, els.editStudent.value || lesson.studentId);
+    refreshEditIncomePreview();
   }
 
   function closeLessonEditor() {
@@ -562,6 +602,23 @@
     }
   }
 
+  /** 只刷新表单模式相关的文案，不覆盖用户正在输入的内容 */
+  function refreshStudentFormMode(mode, student) {
+    var editing = mode === 'edit' && student;
+
+    if (editing) {
+      els.studentSubmit.textContent = t('students.save');
+      els.studentCancel.hidden = false;
+      els.studentFormHint.textContent = t('students.editingHint', {
+        name: student.name
+      });
+    } else {
+      els.studentSubmit.textContent = t('students.add');
+      els.studentCancel.hidden = true;
+      els.studentFormHint.textContent = t('students.form.hint');
+    }
+  }
+
   /** mode: 'add' 或 'edit' */
   function setStudentFormMode(mode, student) {
     var editing = mode === 'edit' && student;
@@ -573,18 +630,12 @@
       els.studentForm.elements.grade.value = student.grade || '';
       els.studentForm.elements.subject.value = student.subject || '';
       els.studentForm.elements.rate.value = String(student.rate);
-
-      els.studentSubmit.textContent = '保存修改';
-      els.studentCancel.hidden = false;
-      els.studentFormHint.textContent = '正在编辑「' + student.name + '」，修改后点击保存。';
-
+      refreshStudentFormMode('edit', student);
       focusStudentName();
     } else {
       els.studentForm.reset();
       clearStudentErrors();
-      els.studentSubmit.textContent = '添加学生';
-      els.studentCancel.hidden = true;
-      els.studentFormHint.textContent = '填写学生信息后点击「添加学生」';
+      refreshStudentFormMode('add');
     }
   }
 
@@ -605,8 +656,8 @@
     els.listView.hidden = isCalendar;
     els.calendarView.hidden = !isCalendar;
     els.recordsHint.textContent = isCalendar
-      ? '按日期查看课程安排'
-      : '按日期从新到旧排列';
+      ? t('records.hint.calendar')
+      : t('records.hint.list');
 
     els.viewButtons.forEach(function (button) {
       button.setAttribute(
@@ -672,15 +723,15 @@
         var info = document.createElement('span');
         info.className = 'calendar__cell-info';
 
-        var count = document.createElement('span');
-        count.className = 'calendar__count';
-        count.textContent = dayLessons.length + ' 节';
+        var countNode = document.createElement('span');
+        countNode.className = 'calendar__count';
+        countNode.textContent = count('lessons', dayLessons.length);
 
         var amount = document.createElement('span');
         amount.className = 'calendar__amount';
-        amount.textContent = '¥' + Calc.formatMoney(cents / 100);
+        amount.textContent = I18N.formatCurrency(cents / 100);
 
-        info.appendChild(count);
+        info.appendChild(countNode);
         info.appendChild(amount);
         node.appendChild(info);
 
@@ -692,23 +743,27 @@
           })
           .filter(Boolean);
 
-        var shown = resolved.slice(0, 2).join('、');
-        if (resolved.length > 2) shown += ' 等';
+        var shown = I18N.joinNames(resolved.slice(0, 2));
+        if (resolved.length > 2) {
+          shown += t('calendar.moreNames', { n: resolved.length - 2 });
+        }
         names.textContent = shown;
         node.appendChild(names);
       }
 
-      var label =
-        cell.year + ' 年 ' + cell.month + ' 月 ' + cell.day + ' 日 ' +
-        Calc.weekdayLabel(cell.date);
-
-      if (dayLessons.length) {
-        label +=
-          '，' + dayLessons.length + ' 节课，收入 ¥' +
-          Calc.formatMoney(cents / 100);
-      } else {
-        label += '，没有课程';
-      }
+      var dateLabel = I18N.formatDate(cell.date);
+      var weekdayText = Calc.weekdayLabel(cell.date);
+      var label = dayLessons.length
+        ? t('calendar.cellHasLessons', {
+          date: dateLabel,
+          weekday: weekdayText,
+          count: count('lessons', dayLessons.length),
+          amount: I18N.formatCurrency(cents / 100)
+        })
+        : t('calendar.cellNoLessons', {
+          date: dateLabel,
+          weekday: weekdayText
+        });
 
       node.setAttribute('aria-label', label);
       node.title = label;
@@ -723,24 +778,19 @@
     els.calendarDayList.textContent = '';
 
     if (!date) {
-      els.calendarDayTitle.textContent = '选择日期';
-      els.calendarDaySummary.textContent = '点击日历中的日期查看当天课程。';
-      els.calendarDayCount.textContent = '0 条';
+      els.calendarDayTitle.textContent = t('calendar.dayTitle');
+      els.calendarDaySummary.textContent = t('calendar.daySummary');
+      els.calendarDayCount.textContent = count('records', 0);
       els.calendarDayEmpty.hidden = false;
-      els.calendarDayEmptyTitle.textContent = '还没有选择日期';
-      els.calendarDayEmptyHint.textContent = '点击上方日历中的任意一天。';
+      els.calendarDayEmptyTitle.textContent = t('calendar.selectPromptTitle');
+      els.calendarDayEmptyHint.textContent = t('calendar.selectPromptHint');
       return;
     }
 
     var dayLessons = Calc.sortLessons(Calc.lessonsOnDate(lessons, date));
-    var parts = date.split('-');
-    var title =
-      parts[0] + ' 年 ' + Number(parts[1]) + ' 月 ' + Number(parts[2]) + ' 日';
-    var weekday = Calc.weekdayLabel(date);
-    if (weekday) title += ' · ' + weekday;
 
-    els.calendarDayTitle.textContent = title;
-    els.calendarDayCount.textContent = dayLessons.length + ' 条';
+    els.calendarDayTitle.textContent = I18N.formatDateLong(date);
+    els.calendarDayCount.textContent = count('records', dayLessons.length);
 
     var minutes = 0;
     var cents = 0;
@@ -750,15 +800,17 @@
     });
 
     els.calendarDaySummary.textContent = dayLessons.length
-      ? dayLessons.length + ' 节课 · ' + Calc.minutesToText(minutes) +
-        ' · 收入 ¥' + Calc.formatMoney(cents / 100)
-      : '当天没有课程记录。';
+      ? t('calendar.daySummaryLine', {
+        count: count('lessons', dayLessons.length),
+        duration: Calc.minutesToText(minutes),
+        amount: I18N.formatCurrency(cents / 100)
+      })
+      : t('calendar.noLessonsSummary');
 
     if (!dayLessons.length) {
       els.calendarDayEmpty.hidden = false;
-      els.calendarDayEmptyTitle.textContent = '当天没有课程';
-      els.calendarDayEmptyHint.textContent =
-        '可以选择其他日期，或在上方「记一节课」中添加。';
+      els.calendarDayEmptyTitle.textContent = t('calendar.noLessons');
+      els.calendarDayEmptyHint.textContent = t('calendar.noLessonsHint');
       return;
     }
 
@@ -774,9 +826,9 @@
       node.querySelector('[data-field="duration"]').textContent =
         Calc.minutesToText(lesson.duration);
       node.querySelector('[data-field="rate"]').textContent =
-        '¥' + Calc.formatMoney(lesson.rate) + '/小时';
+        t('currency.perHour', { amount: I18N.formatCurrency(lesson.rate) });
       node.querySelector('[data-field="income"]').textContent =
-        '¥' + Calc.formatMoney(Calc.lessonIncome(lesson));
+        I18N.formatCurrency(Calc.lessonIncome(lesson));
 
       decorateLessonActions(node, lesson, name);
       fragment.appendChild(node);
@@ -787,17 +839,9 @@
 
   /* ---------------- 收入分析图表 ---------------- */
 
-  /** 图表里用的短金额：12000 → 1.2万 */
+  /** 图表里用的短金额：12000 → 1.2万（按当前语言） */
   function compactMoney(value) {
-    var number = Number(value);
-    if (!Number.isFinite(number) || number <= 0) return '0';
-    if (number >= 10000) {
-      return (Math.round((number / 10000) * 10) / 10)
-        .toFixed(1)
-        .replace(/\.0$/, '') + '万';
-    }
-    if (number >= 1000) return String(Math.round(number));
-    return String(Math.round(number * 100) / 100);
+    return I18N.compactMoney(value);
   }
 
   /** 横向切换年份下拉框 */
@@ -825,7 +869,7 @@
     list.forEach(function (year) {
       var option = document.createElement('option');
       option.value = year;
-      option.textContent = year + ' 年';
+      option.textContent = I18N.yearLabel(year);
       select.appendChild(option);
     });
 
@@ -844,7 +888,7 @@
       var value = month < 10 ? '0' + month : String(month);
       var option = document.createElement('option');
       option.value = value;
-      option.textContent = month + ' 月';
+      option.textContent = I18N.monthName(month);
       select.appendChild(option);
     }
 
@@ -870,7 +914,10 @@
     els.trendEmpty.hidden = hasData;
     els.trendChart.setAttribute(
       'aria-label',
-      yearKey + ' 年月度收入趋势，全年合计 ¥' + Calc.formatMoney(total)
+      t('analysis.trendAria', {
+        year: yearKey,
+        amount: I18N.formatCurrency(total)
+      })
     );
 
     rows.forEach(function (row) {
@@ -879,7 +926,7 @@
 
       var value = document.createElement('span');
       value.className = 'trend-chart__value';
-      value.textContent = '¥' + compactMoney(row.totalIncome);
+      value.textContent = I18N.formatCompactCurrency(row.totalIncome);
 
       var track = document.createElement('span');
       track.className = 'trend-chart__track';
@@ -891,16 +938,19 @@
         : 0;
       bar.style.height = percent + '%';
 
-      var description =
-        yearKey + ' 年 ' + row.month + ' 月：¥' +
-        Calc.formatMoney(row.totalIncome) + '，' + row.count + ' 节课';
+      var description = t('analysis.trendBarAria', {
+        year: yearKey,
+        month: I18N.monthName(row.month),
+        amount: I18N.formatCurrency(row.totalIncome),
+        count: count('lessons', row.count)
+      });
       bar.title = description;
       track.title = description;
       track.appendChild(bar);
 
       var label = document.createElement('span');
       label.className = 'trend-chart__label';
-      label.textContent = row.month + ' 月';
+      label.textContent = I18N.monthName(row.month, 'short');
 
       column.title = description;
       column.appendChild(value);
@@ -917,11 +967,11 @@
     var total = summary.totalIncome;
 
     els.analysisRangeLabel.textContent = rangeLabel;
-    els.analysisReceivable.textContent = '¥' + Calc.formatMoney(total);
-    els.analysisPaid.textContent = '¥' + Calc.formatMoney(summary.paidIncome);
-    els.analysisPaidSub.textContent = summary.paidCount + ' 节';
-    els.analysisUnpaid.textContent = '¥' + Calc.formatMoney(summary.unpaidIncome);
-    els.analysisUnpaidSub.textContent = summary.unpaidCount + ' 节';
+    els.analysisReceivable.textContent = I18N.formatCurrency(total);
+    els.analysisPaid.textContent = I18N.formatCurrency(summary.paidIncome);
+    els.analysisPaidSub.textContent = count('lessons', summary.paidCount);
+    els.analysisUnpaid.textContent = I18N.formatCurrency(summary.unpaidIncome);
+    els.analysisUnpaidSub.textContent = count('lessons', summary.unpaidCount);
 
     var paidPercent = total > 0 ? (summary.paidIncome / total) * 100 : 0;
     var unpaidPercent = total > 0 ? (summary.unpaidIncome / total) * 100 : 0;
@@ -930,9 +980,12 @@
     els.paymentBar.classList.toggle('split-bar--empty', total <= 0);
     els.paymentBar.setAttribute(
       'aria-label',
-      rangeLabel + '：应收 ¥' + Calc.formatMoney(total) +
-        '，已收 ¥' + Calc.formatMoney(summary.paidIncome) +
-        '，待收 ¥' + Calc.formatMoney(summary.unpaidIncome)
+      t('analysis.paymentBarAria', {
+        range: rangeLabel,
+        receivable: I18N.formatCurrency(total),
+        paid: I18N.formatCurrency(summary.paidIncome),
+        unpaid: I18N.formatCurrency(summary.unpaidIncome)
+      })
     );
     els.paymentEmpty.hidden = (summary.paidCount + summary.unpaidCount) > 0;
 
@@ -955,9 +1008,9 @@
 
     els.studentChart.hidden = !hasRows;
     els.studentChartEmpty.hidden = hasRows;
-    els.studentChartHint.textContent =
-      (period === 'year' ? Calc.yearLabel(key) : Calc.monthLabel(key)) +
-      ' · 按收入从高到低排列';
+    els.studentChartHint.textContent = t('analysis.rank.hintWithRange', {
+      range: period === 'year' ? Calc.yearLabel(key) : Calc.monthLabel(key)
+    });
 
     if (!hasRows) return;
 
@@ -965,7 +1018,7 @@
     rows.forEach(function (row) {
       var name = row.name;
       if (row.studentId && studentsById && !studentsById[row.studentId]) {
-        name += '（已删除）';
+        name += t('analysis.deletedSuffix');
       }
 
       var item = document.createElement('div');
@@ -980,7 +1033,10 @@
 
       var meta = document.createElement('span');
       meta.className = 'rank-row__meta';
-      meta.textContent = row.count + ' 节 · ¥' + Calc.formatMoney(row.totalIncome);
+      meta.textContent = t('analysis.rank.meta', {
+        count: count('lessons', row.count),
+        amount: I18N.formatCurrency(row.totalIncome)
+      });
 
       top.appendChild(nameNode);
       top.appendChild(meta);
@@ -1000,7 +1056,11 @@
       item.appendChild(track);
       item.setAttribute(
         'aria-label',
-        name + '：' + row.count + ' 节课，收入 ¥' + Calc.formatMoney(row.totalIncome)
+        t('analysis.rank.itemAria', {
+          name: name,
+          count: count('lessons', row.count),
+          amount: I18N.formatCurrency(row.totalIncome)
+        })
       );
       els.studentChart.appendChild(item);
     });
@@ -1009,8 +1069,10 @@
   /* ---------------- 数据管理 ---------------- */
 
   function renderDataSummary(studentsCount, lessonsCount) {
-    els.dataSummary.textContent =
-      '当前数据：' + studentsCount + ' 名学生 · ' + lessonsCount + ' 条课程记录';
+    els.dataSummary.textContent = t('data.summary', {
+      students: I18N.countLong('students', studentsCount),
+      lessons: I18N.countLong('records', lessonsCount)
+    });
   }
 
   function showImportStatus(message, state) {
@@ -1037,6 +1099,12 @@
     toastTimer = setTimeout(function () {
       els.toast.hidden = true;
     }, 3200);
+  }
+
+  function hideToast() {
+    if (toastTimer) clearTimeout(toastTimer);
+    toastTimer = null;
+    els.toast.hidden = true;
   }
 
   function showStorageWarning(message) {
@@ -1067,6 +1135,7 @@
     setIncomePreview: setIncomePreview,
     openLessonEditor: openLessonEditor,
     closeLessonEditor: closeLessonEditor,
+    refreshLessonDialogLanguage: refreshLessonDialogLanguage,
     readLessonEditor: readLessonEditor,
     refreshEditIncomePreview: refreshEditIncomePreview,
     setEditFieldError: setEditFieldError,
@@ -1082,9 +1151,11 @@
     clearStudentErrors: clearStudentErrors,
     showStudentErrors: showStudentErrors,
     setStudentFormMode: setStudentFormMode,
+    refreshStudentFormMode: refreshStudentFormMode,
     resetStudentForm: resetStudentForm,
     focusStudentName: focusStudentName,
     showToast: showToast,
+    hideToast: hideToast,
     showStorageWarning: showStorageWarning
   };
 })(window);

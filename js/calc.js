@@ -6,11 +6,6 @@
 (function (global) {
   'use strict';
 
-  var moneyFormatter = new Intl.NumberFormat('zh-CN', {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2
-  });
-
   /** 把任意输入安全地转成数字，失败时返回 0 */
   function toNumber(value) {
     if (typeof value === 'number') {
@@ -39,20 +34,14 @@
     return Boolean(lesson) && lesson.paid === true;
   }
 
-  /** 1860 → "1,860.00" */
+  /** 1860 → "1,860.00"（按当前语言格式化） */
   function formatMoney(value) {
-    return moneyFormatter.format(roundMoney(value));
+    return global.I18N.formatMoney(roundMoney(value));
   }
 
-  /** 150 → "2 小时 30 分钟" */
+  /** 150 → "2 小时 30 分钟"（按当前语言格式化） */
   function minutesToText(value) {
-    var total = Math.max(0, Math.round(toNumber(value)));
-    var hours = Math.floor(total / 60);
-    var minutes = total % 60;
-
-    if (hours === 0) return minutes + ' 分钟';
-    if (minutes === 0) return hours + ' 小时';
-    return hours + ' 小时 ' + minutes + ' 分钟';
+    return global.I18N.minutesToText(value);
   }
 
   /** 从 "2026-11-03" 取出 "2026-11" */
@@ -75,10 +64,9 @@
     return monthKey(toDateString(date));
   }
 
-  /** "2026-11" → "2026 年 11 月" */
+  /** "2026-11" → "2026 年 11 月"（按当前语言格式化） */
   function monthLabel(key) {
-    if (typeof key !== 'string' || !/^\d{4}-\d{2}$/.test(key)) return '—';
-    return key.slice(0, 4) + ' 年 ' + Number(key.slice(5, 7)) + ' 月';
+    return global.I18N.monthLabel(key);
   }
 
   /** 从 "2026-11-03" 取出 "2026" */
@@ -91,10 +79,9 @@
     return yearKey(toDateString(date));
   }
 
-  /** "2026" → "2026 年" */
+  /** "2026" → "2026 年"（按当前语言格式化） */
   function yearLabel(key) {
-    if (typeof key !== 'string' || !/^\d{4}$/.test(key)) return '—';
-    return key + ' 年';
+    return global.I18N.yearLabel(key);
   }
 
   /** 判断一节课是否属于指定年份 */
@@ -296,12 +283,10 @@
     return nextYear + '-' + pad2(nextMonth);
   }
 
-  /** "2026-11-03" → "周二" */
+  /** "2026-11-03" → "周二"（按当前语言格式化） */
   function weekdayLabel(dateString) {
     if (!isValidDateString(dateString)) return '';
-    var parts = dateString.split('-').map(Number);
-    var d = new Date(parts[0], parts[1] - 1, parts[2]);
-    return ['周日', '周一', '周二', '周三', '周四', '周五', '周六'][d.getDay()];
+    return global.I18N.weekdayLabel(dateString);
   }
 
   /**
@@ -347,7 +332,7 @@
       result.push({
         month: i + 1,
         key: year + '-' + pad2(i + 1),
-        label: (i + 1) + ' 月',
+        label: global.I18N.monthName(i + 1, 'short'),
         count: counts[i],
         totalIncome: totalCents[i] / 100,
         paidIncome: paidCents[i] / 100,
@@ -372,7 +357,8 @@
       var lesson = list[i];
       if (!predicate(lesson)) continue;
 
-      var name = resolveStudentName(lesson, studentsById) || lesson.student || '未命名学生';
+      var name = resolveStudentName(lesson, studentsById) || lesson.student ||
+        global.I18N.t('common.unnamedStudent');
       var groupKey = lesson.studentId
         ? 'id:' + lesson.studentId
         : 'name:' + (lesson.student || '');
@@ -406,7 +392,7 @@
 
     rows.sort(function (a, b) {
       if (b.totalIncome !== a.totalIncome) return b.totalIncome - a.totalIncome;
-      return a.name.localeCompare(b.name, 'zh-CN');
+      return a.name.localeCompare(b.name, global.I18N.getLocale());
     });
 
     return rows;

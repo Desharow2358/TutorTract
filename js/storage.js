@@ -22,7 +22,7 @@
   var cache = { version: VERSION, students: [], lessons: [] };
   var loaded = false;
   var available = true;
-  var lastError = '';
+  var lastError = null;
 
   function emptyStore() {
     return { version: VERSION, students: [], lessons: [] };
@@ -208,7 +208,8 @@
 
     available = detect();
     if (!available) {
-      lastError = '无法访问浏览器本地存储，本次记录在刷新后会丢失。';
+      lastError = null;
+      setLastError('storage.error.localUnavailable');
       cache = emptyStore();
       return cache;
     }
@@ -218,7 +219,8 @@
       raw = global.localStorage.getItem(KEY);
     } catch (error) {
       available = false;
-      lastError = '读取本地数据失败，本次记录在刷新后会丢失。';
+      lastError = null;
+      setLastError('storage.error.readFailed');
       cache = emptyStore();
       return cache;
     }
@@ -235,7 +237,8 @@
       if (result.migrated) persist();
     } catch (error) {
       // 数据损坏：先把原文备份到另一个键，再重置，避免直接丢失
-      lastError = '本地数据格式异常，已备份原数据并重置为空列表。';
+      lastError = null;
+      setLastError('storage.error.corrupt');
       try {
         global.localStorage.setItem(KEY + ':broken:' + Date.now(), raw);
         global.localStorage.removeItem(KEY);
@@ -255,7 +258,8 @@
       global.localStorage.setItem(KEY, JSON.stringify(cache));
       return true;
     } catch (error) {
-      lastError = '保存失败：浏览器存储空间不足或已被禁用。';
+      lastError = null;
+      setLastError('storage.error.saveFailed');
       return false;
     }
   }
@@ -438,8 +442,12 @@
 
   /* ---------------- 备份与恢复 ---------------- */
 
-  function backupError(message) {
-    return { ok: false, error: message };
+  function setLastError(key, params) {
+    lastError = { key: key, params: params || null };
+  }
+
+  function backupError(key, params) {
+    return { ok: false, errorKey: key, params: params || null };
   }
 
   /**
@@ -496,35 +504,37 @@
    */
   function validateBackup(raw) {
     if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
-      return backupError('备份文件内容不是有效的 JSON 对象。');
+      return backupError('backup.error.notObject');
     }
 
     if (raw.app !== BACKUP_APP) {
-      return backupError('这不是 TutorTrack 的备份文件（缺少 app 标记）。');
+      return backupError('backup.error.notBackup');
     }
 
     var backupVersion = Number(raw.backupVersion);
     if (!Number.isFinite(backupVersion) || backupVersion < 1) {
-      return backupError('备份文件缺少有效的 backupVersion。');
+      return backupError('backup.error.backupVersionMissing');
     }
     if (backupVersion > BACKUP_VERSION) {
-      return backupError(
-        '备份文件版本较新（v' + backupVersion + '），当前应用最高支持 v' + BACKUP_VERSION + '。'
-      );
+      return backupError('backup.error.backupVersionNewer', {
+        version: backupVersion,
+        max: BACKUP_VERSION
+      });
     }
 
     var dataVersion = Number(raw.dataVersion);
     if (!Number.isFinite(dataVersion) || dataVersion < 1) {
-      return backupError('备份文件缺少有效的 dataVersion。');
+      return backupError('backup.error.dataVersionMissing');
     }
     if (dataVersion > VERSION) {
-      return backupError(
-        '备份数据版本较新（v' + dataVersion + '），当前应用最高支持 v' + VERSION + '。'
-      );
+      return backupError('backup.error.dataVersionNewer', {
+        version: dataVersion,
+        max: VERSION
+      });
     }
 
     if (!Array.isArray(raw.students) || !Array.isArray(raw.lessons)) {
-      return backupError('备份文件缺少 students 或 lessons 数组。');
+      return backupError('backup.error.arraysMissing');
     }
 
     /* 1. 校验学生 */
@@ -533,25 +543,25 @@
 
     for (var i = 0; i < raw.students.length; i += 1) {
       var item = raw.students[i];
-      var label = '第 ' + (i + 1) + ' 名学生';
+      var index = i + 1;
 
       if (!item || typeof item !== 'object') {
-        return backupError(label + '格式不正确。');
+        return backupError('backup.error.studentFormat', { index: index });
       }
       if (typeof item.id !== 'string' || !item.id.trim()) {
-        return backupError(label + '缺少 id。');
+        return backupError('backup.error.studentId', { index: index });
       }
       if (studentIds[item.id]) {
-        return backupError('学生 id 重复：' + item.id);
+        return backupError('backup.error.studentDuplicate', { id: item.id });
       }
 
       var name = cleanText(item.name, 20);
       var rate = Number(item.rate);
       if (!name) {
-        return backupError(label + '缺少昵称。');
+        return backupError('backup.error.studentName', { index: index });
       }
       if (!Number.isFinite(rate) || rate < 0) {
-        return backupError(label + '的时薪不正确。');
+        return backupError('backup.error.studentRate', { index: index });
       }
 
       studentIds[item.id] = true;
@@ -572,19 +582,19 @@
 
     for (var j = 0; j < raw.lessons.length; j += 1) {
       var rawLesson = raw.lessons[j];
-      var lessonLabel = '第 ' + (j + 1) + ' 条课程记录';
+      var lessonIndex = j + 1;
 
       if (!rawLesson || typeof rawLesson !== 'object') {
-        return backupError(lessonLabel + '格式不正确。');
+        return backupError('backup.error.lessonFormat', { index: lessonIndex });
       }
       if (typeof rawLesson.id !== 'string' || !rawLesson.id.trim()) {
-        return backupError(lessonLabel + '缺少 id。');
+        return backupError('backup.error.lessonId', { index: lessonIndex });
       }
       if (lessonIds[rawLesson.id]) {
-        return backupError('课程记录 id 重复：' + rawLesson.id);
+        return backupError('backup.error.lessonDuplicate', { id: rawLesson.id });
       }
       if (typeof rawLesson.studentId !== 'string' || !rawLesson.studentId) {
-        return backupError(lessonLabel + '缺少 studentId。');
+        return backupError('backup.error.lessonStudentId', { index: lessonIndex });
       }
 
       var snapshot = cleanText(rawLesson.student, 20);
@@ -592,24 +602,24 @@
         snapshot = byId[rawLesson.studentId].name;
       }
       if (!snapshot) {
-        return backupError(lessonLabel + '缺少学生昵称。');
+        return backupError('backup.error.lessonStudentName', { index: lessonIndex });
       }
       if (!Calc.isValidDateString(rawLesson.date)) {
-        return backupError(lessonLabel + '的上课日期不正确。');
+        return backupError('backup.error.lessonDate', { index: lessonIndex });
       }
 
       var duration = Number(rawLesson.duration);
       if (!Number.isFinite(duration) || duration <= 0 || Math.round(duration) !== duration) {
-        return backupError(lessonLabel + '的时长必须是大于 0 的整数分钟。');
+        return backupError('backup.error.lessonDuration', { index: lessonIndex });
       }
 
       var lessonRate = Number(rawLesson.rate);
       if (!Number.isFinite(lessonRate) || lessonRate < 0) {
-        return backupError(lessonLabel + '的课时费不正确。');
+        return backupError('backup.error.lessonRate', { index: lessonIndex });
       }
       // 兼容旧备份：缺少 paid 字段时按待收款处理
       if (rawLesson.paid !== undefined && typeof rawLesson.paid !== 'boolean') {
-        return backupError(lessonLabel + '的收款状态不正确。');
+        return backupError('backup.error.lessonPaid', { index: lessonIndex });
       }
 
       lessonIds[rawLesson.id] = true;
@@ -649,8 +659,8 @@
 
     available = detect();
     if (!available) {
-      lastError = '浏览器本地存储不可用，无法恢复备份。';
-      return backupError(lastError);
+      setLastError('storage.error.restoreUnavailable');
+      return backupError('storage.error.restoreUnavailable');
     }
 
     var previousRaw = null;
@@ -658,8 +668,8 @@
       previousRaw = global.localStorage.getItem(KEY);
     } catch (error) {
       available = false;
-      lastError = '读取当前数据失败，未执行恢复。';
-      return backupError(lastError);
+      setLastError('storage.error.restoreReadFailed');
+      return backupError('storage.error.restoreReadFailed');
     }
 
     // 恢复前尽力留一份快照，万一后续操作出错还能手动找回
@@ -675,7 +685,7 @@
     try {
       serialized = JSON.stringify(validation.store);
     } catch (error) {
-      return backupError('备份数据处理失败，当前数据未改变。');
+      return backupError('storage.error.restoreSerializeFailed');
     }
 
     try {
@@ -687,13 +697,13 @@
       } catch (rollbackError) {
         /* 忽略回滚失败，至少内存缓存没有被替换 */
       }
-      lastError = '写入本地存储失败，当前数据未改变。';
-      return backupError(lastError);
+      setLastError('storage.error.restoreWriteFailed');
+      return backupError('storage.error.restoreWriteFailed');
     }
 
     cache = validation.store;
     loaded = true;
-    lastError = '';
+    lastError = null;
 
     return {
       ok: true,

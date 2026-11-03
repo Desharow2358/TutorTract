@@ -29,6 +29,15 @@
   var analysisYearSelect = null;
   var analysisMonthSelect = null;
   var importFile = null;
+  var languageSelect = null;
+
+  function t(key, params) {
+    return I18N.t(key, params);
+  }
+
+  function count(unit, value) {
+    return I18N.count(unit, value);
+  }
 
   function init() {
     form = document.getElementById('lesson-form');
@@ -40,23 +49,25 @@
     analysisYearSelect = document.getElementById('analysis-year');
     analysisMonthSelect = document.getElementById('analysis-month');
     importFile = document.getElementById('import-file');
+    languageSelect = document.getElementById('language-select');
 
+    // 先按已保存的语言把静态文案铺好，再初始化界面
+    I18N.apply(document);
     UI.init();
 
     // 读取数据（顺带触发可用性检测、旧数据迁移和损坏数据的兜底）
     TTStorage.load();
     if (!TTStorage.isPersistent()) {
-      UI.showStorageWarning(
-        '无法访问浏览器本地存储（可能处于无痕模式或禁用了站点数据）。本次记录在刷新后会丢失。'
-      );
+      UI.showStorageWarning(t('storage.warning.unavailable'));
     }
 
     var loadError = TTStorage.getLastError();
-    if (loadError) UI.showToast(loadError, 'error');
+    if (loadError) UI.showToast(t(loadError.key, loadError.params), 'error');
 
     UI.setFormDefaultDate(Calc.toDateString(new Date()));
 
     bindEvents();
+    syncLanguageSelect();
     render();
   }
 
@@ -165,6 +176,13 @@
     });
     importFile.addEventListener('change', handleImportFile);
 
+    if (languageSelect) {
+      languageSelect.addEventListener('change', function (event) {
+        I18N.setLanguage(event.target.value);
+      });
+    }
+    document.addEventListener('tutortrack:languagechange', applyLanguage);
+
     // 页面从后台切回来时，如果跨月或跨年了就刷新统计
     document.addEventListener('visibilitychange', function () {
       if (document.visibilityState !== 'visible') return;
@@ -177,6 +195,34 @@
         render();
       }
     });
+  }
+
+  function syncLanguageSelect() {
+    if (languageSelect) languageSelect.value = I18N.getLanguage();
+  }
+
+  /** 切换语言后：先刷新静态文案，再用当前数据重画动态区域，不触碰业务数据 */
+  function applyLanguage() {
+    I18N.apply(document);
+    syncLanguageSelect();
+
+    if (state.editingStudentId) {
+      var student = findStudent(state.editingStudentId);
+      UI.refreshStudentFormMode(student ? 'edit' : 'add', student);
+    } else {
+      UI.refreshStudentFormMode('add');
+    }
+
+    if (state.editingLessonId) {
+      var lesson = findLesson(state.editingLessonId);
+      if (lesson) {
+        UI.refreshLessonDialogLanguage(lesson, TTStorage.getStudents());
+      }
+    }
+
+    UI.hideToast();
+    UI.showImportStatus('', '');
+    render();
   }
 
   function indexStudents(students) {
@@ -234,32 +280,32 @@
 
     if (!values.studentId) {
       errors.student = TTStorage.getStudents().length
-        ? '请选择学生。'
-        : '还没有学生，请先在「学生管理」中添加。';
+        ? t('validation.lesson.studentRequired')
+        : t('validation.lesson.studentNone');
     }
 
     if (!values.date) {
-      errors.date = '请选择上课日期。';
+      errors.date = t('validation.lesson.dateRequired');
     } else if (!Calc.isValidDateString(values.date)) {
-      errors.date = '日期格式不正确。';
+      errors.date = t('validation.lesson.dateInvalid');
     }
 
     var duration = Number(values.duration);
     if (values.duration === '') {
-      errors.duration = '请填写课程时长。';
+      errors.duration = t('validation.lesson.durationRequired');
     } else if (!Number.isFinite(duration) || !Number.isInteger(duration)) {
-      errors.duration = '时长请填写整数分钟。';
+      errors.duration = t('validation.lesson.durationInteger');
     } else if (duration < 1 || duration > 1440) {
-      errors.duration = '时长需在 1～1440 分钟之间。';
+      errors.duration = t('validation.lesson.durationRange');
     }
 
     var rate = Number(values.rate);
     if (values.rate === '') {
-      errors.rate = '请填写课时费。';
+      errors.rate = t('validation.lesson.rateRequired');
     } else if (!Number.isFinite(rate)) {
-      errors.rate = '课时费请填写数字。';
+      errors.rate = t('validation.lesson.rateNumber');
     } else if (rate < 0 || rate > 10000) {
-      errors.rate = '课时费需在 0～10000 元之间。';
+      errors.rate = t('validation.lesson.rateRange');
     }
 
     return errors;
@@ -285,7 +331,7 @@
     });
 
     if (!result) {
-      UI.showToast('添加失败：数据格式不正确。', 'error');
+      UI.showToast(t('toast.lesson.addFailed'), 'error');
       return;
     }
 
@@ -294,12 +340,12 @@
     render();
 
     if (result.saved) {
-      UI.showToast(
-        '已记录：' + result.lesson.student + ' · ' + Calc.minutesToText(result.lesson.duration),
-        'success'
-      );
+      UI.showToast(t('toast.lesson.added', {
+        student: result.lesson.student,
+        duration: Calc.minutesToText(result.lesson.duration)
+      }), 'success');
     } else {
-      UI.showToast('记录已添加，但未能写入本地存储，刷新后会丢失。', 'error');
+      UI.showToast(t('toast.lesson.addedUnsaved'), 'error');
     }
 
     UI.focusStudent();
@@ -337,7 +383,7 @@
     }
 
     var income = Calc.lessonIncome({ duration: duration, rate: rate });
-    UI.setIncomePreview('¥' + Calc.formatMoney(income));
+    UI.setIncomePreview(I18N.formatCurrency(income));
   }
 
   /** 输入法还在选词时按回车，不要提交表单 */
@@ -368,18 +414,20 @@
 
     var target = findLesson(id);
     if (!target) {
-      UI.showToast('这条记录已经不存在了，请刷新页面。', 'error');
+      UI.showToast(t('toast.lesson.missing'), 'error');
       return;
     }
 
     var name = Calc.resolveStudentName(target, indexStudents(TTStorage.getStudents()));
-    var message =
-      '确定删除 ' + name + ' 在 ' + target.date + ' 的课程记录吗？\n此操作无法撤销。';
+    var message = t('confirm.deleteLesson', {
+      name: name,
+      date: I18N.formatDate(target.date)
+    });
     if (!global.confirm(message)) return;
 
     var result = TTStorage.removeLesson(id);
     if (!result.removed) {
-      UI.showToast('删除失败：没有找到这条记录。', 'error');
+      UI.showToast(t('toast.lesson.deleteFailed'), 'error');
       render();
       return;
     }
@@ -392,9 +440,9 @@
     render();
 
     if (result.saved) {
-      UI.showToast('已删除一条课程记录。', 'success');
+      UI.showToast(t('toast.lesson.deleted'), 'success');
     } else {
-      UI.showToast('已删除，但未能同步到本地存储，刷新后可能恢复。', 'error');
+      UI.showToast(t('toast.lesson.deletedUnsaved'), 'error');
     }
   }
 
@@ -402,7 +450,7 @@
   function handleTogglePaid(id) {
     var target = findLesson(id);
     if (!target) {
-      UI.showToast('这条记录已经不存在了，请刷新页面。', 'error');
+      UI.showToast(t('toast.lesson.missing'), 'error');
       render();
       return;
     }
@@ -410,18 +458,23 @@
     var nextPaid = !Calc.isPaid(target);
     var result = TTStorage.setLessonPaid(id, nextPaid);
     if (!result) {
-      UI.showToast('修改失败：没有找到这条记录。', 'error');
+      UI.showToast(t('toast.lesson.updateMissing'), 'error');
       render();
       return;
     }
 
     render();
 
-    var message = nextPaid ? '已标记为已收款。' : '已改回待收款。';
     if (result.saved) {
-      UI.showToast(message, 'success');
+      UI.showToast(
+        t(nextPaid ? 'toast.lesson.paidMarked' : 'toast.lesson.unpaidMarked'),
+        'success'
+      );
     } else {
-      UI.showToast(message + ' 但未能写入本地存储，刷新后可能恢复。', 'error');
+      UI.showToast(
+        t(nextPaid ? 'toast.lesson.paidMarkedUnsaved' : 'toast.lesson.unpaidMarkedUnsaved'),
+        'error'
+      );
     }
   }
 
@@ -429,7 +482,7 @@
   function handleOpenLessonEdit(id) {
     var target = findLesson(id);
     if (!target) {
-      UI.showToast('这条记录已经不存在了，请刷新页面。', 'error');
+      UI.showToast(t('toast.lesson.missing'), 'error');
       render();
       return;
     }
@@ -443,7 +496,7 @@
 
     var id = state.editingLessonId;
     if (!id) {
-      UI.showToast('没有正在编辑的记录，请重新打开编辑窗口。', 'error');
+      UI.showToast(t('toast.lesson.noEditing'), 'error');
       return;
     }
 
@@ -465,7 +518,7 @@
     });
 
     if (!result) {
-      UI.showToast('保存失败：记录不存在或数据格式不正确。', 'error');
+      UI.showToast(t('toast.lesson.updateFailed'), 'error');
       return;
     }
 
@@ -474,9 +527,9 @@
     render();
 
     if (result.saved) {
-      UI.showToast('已保存课程记录的修改。', 'success');
+      UI.showToast(t('toast.lesson.updated'), 'success');
     } else {
-      UI.showToast('已保存，但未能写入本地存储，刷新后可能恢复。', 'error');
+      UI.showToast(t('toast.lesson.updatedUnsaved'), 'error');
     }
   }
 
@@ -507,18 +560,18 @@
     var errors = {};
 
     if (!values.name) {
-      errors.name = '请填写学生昵称。';
+      errors.name = t('validation.student.nameRequired');
     } else if (values.name.length > 20) {
-      errors.name = '昵称最多 20 个字符。';
+      errors.name = t('validation.student.nameTooLong');
     }
 
     var rate = Number(values.rate);
     if (values.rate === '') {
-      errors.rate = '请填写默认时薪。';
+      errors.rate = t('validation.student.rateRequired');
     } else if (!Number.isFinite(rate)) {
-      errors.rate = '默认时薪请填写数字。';
+      errors.rate = t('validation.student.rateNumber');
     } else if (rate < 0 || rate > 10000) {
-      errors.rate = '默认时薪需在 0～10000 元之间。';
+      errors.rate = t('validation.student.rateRange');
     }
 
     return errors;
@@ -544,7 +597,7 @@
       : TTStorage.addStudent(values);
 
     if (!result) {
-      UI.showToast('保存失败：请检查学生信息。', 'error');
+      UI.showToast(t('toast.student.saveFailed'), 'error');
       return;
     }
 
@@ -558,14 +611,20 @@
       handlePreview();
     }
 
-    var verb = wasEditing
-      ? '已保存「' + result.student.name + '」的修改。'
-      : '已添加学生「' + result.student.name + '」。';
-
     if (result.saved) {
-      UI.showToast(verb, 'success');
+      UI.showToast(
+        t(wasEditing ? 'toast.student.saved' : 'toast.student.added', {
+          name: result.student.name
+        }),
+        'success'
+      );
     } else {
-      UI.showToast(verb + ' 但未能写入本地存储，刷新后会丢失。', 'error');
+      UI.showToast(
+        t(wasEditing ? 'toast.student.savedUnsaved' : 'toast.student.addedUnsaved', {
+          name: result.student.name
+        }),
+        'error'
+      );
     }
 
     UI.focusStudentName();
@@ -578,7 +637,7 @@
     if (editButton) {
       var student = findStudent(editButton.dataset.id);
       if (!student) {
-        UI.showToast('这位学生已经不存在了，请刷新页面。', 'error');
+        UI.showToast(t('toast.student.missing'), 'error');
         render();
         return;
       }
@@ -593,7 +652,7 @@
 
     var target = findStudent(deleteButton.dataset.id);
     if (!target) {
-      UI.showToast('这位学生已经不存在了，请刷新页面。', 'error');
+      UI.showToast(t('toast.student.missing'), 'error');
       render();
       return;
     }
@@ -603,17 +662,17 @@
       return lesson.studentId === target.id;
     }).length;
 
-    var message = '确定删除学生「' + target.name + '」吗？';
-    if (related > 0) {
-      message += '\n他/她的 ' + related + ' 条历史课程记录会保留，并继续计入收入统计。';
-    } else {
-      message += '\n该学生还没有课程记录。';
-    }
+    var message = related > 0
+      ? t('confirm.deleteStudentWithLessons', {
+        name: target.name,
+        count: count('records', related)
+      })
+      : t('confirm.deleteStudentNoLessons', { name: target.name });
     if (!global.confirm(message)) return;
 
     var result = TTStorage.removeStudent(target.id);
     if (!result.removed) {
-      UI.showToast('删除失败：没有找到这位学生。', 'error');
+      UI.showToast(t('toast.student.deleteFailed'), 'error');
       render();
       return;
     }
@@ -626,9 +685,9 @@
     render();
 
     if (result.saved) {
-      UI.showToast('已删除学生「' + target.name + '」，历史课程记录已保留。', 'success');
+      UI.showToast(t('toast.student.deleted', { name: target.name }), 'success');
     } else {
-      UI.showToast('已删除，但未能同步到本地存储，刷新后可能恢复。', 'error');
+      UI.showToast(t('toast.student.deletedUnsaved'), 'error');
     }
   }
 
@@ -742,22 +801,6 @@
 
   /* ---------------- 数据备份与恢复 ---------------- */
 
-  function twoDigits(value) {
-    return value < 10 ? '0' + value : String(value);
-  }
-
-  /** 把备份里的 ISO 时间显示成本地时间 */
-  function formatExportTime(value) {
-    var date = new Date(value);
-    if (!Number.isFinite(date.getTime())) return value || '未知';
-
-    return (
-      date.getFullYear() + '-' + twoDigits(date.getMonth() + 1) + '-' +
-      twoDigits(date.getDate()) + ' ' + twoDigits(date.getHours()) + ':' +
-      twoDigits(date.getMinutes())
-    );
-  }
-
   function handleExportBackup() {
     var backup = TTStorage.createBackup();
     var json = JSON.stringify(backup, null, 2);
@@ -782,7 +825,7 @@
         link.href = 'data:application/json;charset=utf-8,' + encodeURIComponent(json);
       }
     } catch (error) {
-      UI.showToast('导出失败：浏览器不支持文件下载。', 'error');
+      UI.showToast(t('toast.export.failed'), 'error');
       return;
     }
 
@@ -796,11 +839,10 @@
       }, 1000);
     }
 
-    UI.showToast(
-      '已导出备份：' + backup.counts.students + ' 名学生、' +
-      backup.counts.lessons + ' 条课程记录。',
-      'success'
-    );
+    UI.showToast(t('toast.export.success', {
+      students: I18N.countLong('students', backup.counts.students),
+      lessons: I18N.countLong('records', backup.counts.lessons)
+    }), 'success');
   }
 
   function handleImportFile(event) {
@@ -810,8 +852,8 @@
     if (!file) return;
 
     if (file.size > 20 * 1024 * 1024) {
-      UI.showImportStatus('导入失败：备份文件超过 20 MB。', 'error');
-      UI.showToast('导入失败：备份文件过大。', 'error');
+      UI.showImportStatus(t('import.tooLarge'), 'error');
+      UI.showToast(t('toast.import.tooLarge'), 'error');
       return;
     }
 
@@ -823,8 +865,8 @@
       try {
         parsed = JSON.parse(String(reader.result));
       } catch (error) {
-        UI.showImportStatus('导入失败：文件不是有效的 JSON。', 'error');
-        UI.showToast('导入失败：文件不是有效的 JSON。', 'error');
+        UI.showImportStatus(t('import.invalidJson'), 'error');
+        UI.showToast(t('toast.import.invalidJson'), 'error');
         return;
       }
 
@@ -832,8 +874,8 @@
     };
 
     reader.onerror = function () {
-      UI.showImportStatus('导入失败：无法读取文件。', 'error');
-      UI.showToast('导入失败：无法读取文件。', 'error');
+      UI.showImportStatus(t('import.readFailed'), 'error');
+      UI.showToast(t('toast.import.readFailed'), 'error');
     };
 
     reader.readAsText(file, 'utf-8');
@@ -843,38 +885,40 @@
     var validation = TTStorage.validateBackup(parsed);
 
     if (!validation.ok) {
-      UI.showImportStatus('导入失败：' + validation.error, 'error');
-      UI.showToast('导入失败：' + validation.error, 'error');
+      var validationMessage = t('import.failed', {
+        reason: t(validation.errorKey, validation.params)
+      });
+      UI.showImportStatus(validationMessage, 'error');
+      UI.showToast(validationMessage, 'error');
       return;
     }
 
     var incoming = validation.backup;
-    var currentStudents = TTStorage.getStudents().length;
-    var currentLessons = TTStorage.getLessons().length;
     var exportedAt = incoming.exportedAt
-      ? formatExportTime(incoming.exportedAt)
-      : '备份文件中未记录';
+      ? I18N.formatExportTime(incoming.exportedAt)
+      : t('import.noExportTime');
 
-    var message =
-      '即将导入备份：\n' +
-      '· 学生：' + incoming.counts.students + ' 名\n' +
-      '· 课程记录：' + incoming.counts.lessons + ' 条\n' +
-      '· 导出时间：' + exportedAt + '\n\n' +
-      '注意：导入会替换当前现有的 ' + currentStudents + ' 名学生和 ' +
-      currentLessons + ' 条课程记录，现有数据将被覆盖。\n' +
-      '建议先导出当前数据作为备份。\n\n' +
-      '确定继续导入吗？';
+    var message = t('confirm.import', {
+      students: I18N.formatNumber(incoming.counts.students),
+      lessons: I18N.formatNumber(incoming.counts.lessons),
+      exportedAt: exportedAt,
+      currentStudents: I18N.countLong('students', TTStorage.getStudents().length),
+      currentLessons: I18N.countLong('records', TTStorage.getLessons().length)
+    });
 
     if (!global.confirm(message)) {
-      UI.showImportStatus('已取消导入，当前数据没有改变。', '');
-      UI.showToast('已取消导入。', '');
+      UI.showImportStatus(t('import.cancelled'), '');
+      UI.showToast(t('toast.import.cancelled'), '');
       return;
     }
 
     var result = TTStorage.restoreBackup(parsed);
     if (!result.ok) {
-      UI.showImportStatus('导入失败：' + result.error, 'error');
-      UI.showToast('导入失败：' + result.error, 'error');
+      var restoreMessage = t('import.failed', {
+        reason: t(result.errorKey, result.params)
+      });
+      UI.showImportStatus(restoreMessage, 'error');
+      UI.showToast(restoreMessage, 'error');
       return;
     }
 
@@ -895,9 +939,10 @@
 
     render();
 
-    var successMessage =
-      '导入成功：已恢复 ' + result.counts.students + ' 名学生、' +
-      result.counts.lessons + ' 条课程记录。';
+    var successMessage = t('import.success', {
+      students: I18N.countLong('students', result.counts.students),
+      lessons: I18N.countLong('records', result.counts.lessons)
+    });
     UI.showImportStatus(successMessage, 'success');
     UI.showToast(successMessage, 'success');
   }

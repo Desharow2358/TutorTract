@@ -64,18 +64,20 @@
   <main>
     <h1>Calc 计算逻辑自测</h1>
     <p class="sub">
-      这个页面只加载 <code>js/calc.js</code>，不依赖存储和界面。
+      这个页面加载 <code>js/i18n.js</code> 和 <code>js/calc.js</code>，不依赖存储和界面。
       双击打开即可运行，绿色代表通过，红色代表失败。
     </p>
     <div class="summary" id="summary">运行中…</div>
     <ol id="results"></ol>
   </main>
 
+  <script src="../js/i18n.js"></script>
   <script src="../js/calc.js"></script>
   <script>
     (function () {
       'use strict';
 
+      I18N.setLanguage('zh-CN', { persist: false });
       var results = [];
 
       function check(name, actual, expected) {
@@ -251,6 +253,35 @@
       check('年度排行保留已删除学生', yearRank.map(function (row) { return row.name; }), ['小红', '已删除学生', '小明A']);
       check('已删除学生收入不丢失', yearRank[1].totalIncome, 200);
       check('课程记录年份从新到旧', Calc.yearsWithLessons(paymentSample), ['2026', '2025']);
+
+      /* ---------- 多语言格式化 ---------- */
+      I18N.setLanguage('en', { persist: false });
+      check('英文月份标签', Calc.monthLabel('2026-11'), 'November 2026');
+      check('英文日期', I18N.formatDate('2026-11-03'), 'Nov 3, 2026');
+      check('英文星期标签', Calc.weekdayLabel('2026-11-03'), 'Tue');
+      check('英文时长', Calc.minutesToText(150), '2 hrs 30 min');
+      check('英文金额格式', Calc.formatMoney(1860), '1,860.00');
+      check('英文课程计数（复数）', I18N.count('lessons', 2), '2 lessons');
+      check('英文课程计数（单数）', I18N.count('lessons', 1), '1 lesson');
+
+      I18N.setLanguage('zh-TW', { persist: false });
+      check('繁体月份标签', Calc.monthLabel('2026-11'), '2026 年 11 月');
+      check('繁体星期标签', Calc.weekdayLabel('2026-11-03'), '週二');
+      check('繁体时长', Calc.minutesToText(150), '2 小時 30 分鐘');
+      check('繁体记录计数', I18N.count('records', 2), '2 條');
+
+      I18N.setLanguage('zh-CN', { persist: false });
+      check('缺失翻译回退到键名', I18N.t('missing.key'), 'missing.key');
+
+      ['zh-TW', 'en'].forEach(function (lang) {
+        var baseKeys = I18N.keys('zh-CN');
+        var targetKeys = I18N.keys(lang);
+        check(
+          '翻译键完整：' + lang,
+          baseKeys.filter(function (key) { return targetKeys.indexOf(key) === -1; }),
+          []
+        );
+      });
 
       /* ---------- 渲染结果 ---------- */
       var passed = results.filter(function (r) { return r.pass; }).length;

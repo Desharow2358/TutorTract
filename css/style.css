@@ -98,7 +98,40 @@ select {
 }
 
 .site-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 14px;
   margin-bottom: 22px;
+}
+
+.language-switcher {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+  padding: 4px 6px 4px 12px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface);
+  box-shadow: 0 8px 20px -18px rgba(22, 32, 58, 0.55);
+}
+
+.language-switcher__label {
+  color: var(--muted);
+  font-size: 0.78rem;
+  white-space: nowrap;
+}
+
+.language-switcher select {
+  width: auto;
+  padding: 6px 28px 6px 8px;
+  border: 0;
+  border-radius: 999px;
+  background-color: var(--surface-soft);
+  font-size: 0.8rem;
+  font-weight: 600;
 }
 
 .brand {
@@ -195,6 +228,7 @@ select {
   color: var(--muted);
   font-size: 0.8rem;
   font-weight: 600;
+  white-space: nowrap;
   cursor: pointer;
   transition: background 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
 }
@@ -361,6 +395,7 @@ select.is-invalid {
 }
 
 .income-preview strong {
+  margin-left: 4px;
   color: var(--success);
   font-size: 1.15rem;
   font-variant-numeric: tabular-nums;
@@ -427,7 +462,7 @@ select.is-invalid {
 
 .lesson {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 150px 100px 184px;
+  grid-template-columns: minmax(0, 1fr) 150px 100px 200px;
   grid-template-areas: "who meta income side";
   align-items: center;
   gap: 12px;
@@ -589,6 +624,7 @@ select.is-invalid {
   background: transparent;
   color: var(--muted);
   font-size: 0.8rem;
+  white-space: nowrap;
   cursor: pointer;
   transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
 }
@@ -975,7 +1011,7 @@ select.is-invalid {
 
 .day-lesson {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 110px 76px auto;
+  grid-template-columns: minmax(0, 1fr) 110px auto auto;
   grid-template-areas: "main income status actions";
   align-items: center;
   gap: 10px;
