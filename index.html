@@ -1,0 +1,498 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>TutorTrack · 家教课时管理</title>
+  <meta name="description" content="管理学生、记录家教课程、自动计算收入，支持日历视图、收入图表、本地 JSON 备份恢复的网页应用。">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%232f6fed'/%3E%3Ctext x='32' y='45' font-family='Segoe UI, sans-serif' font-size='34' font-weight='700' fill='white' text-anchor='middle'%3ET%3C/text%3E%3C/svg%3E">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <a class="skip-link" href="#main">跳到主要内容</a>
+
+  <div class="page">
+    <header class="site-header">
+      <div class="brand">
+        <span class="brand__mark" aria-hidden="true">T</span>
+        <div>
+          <h1 class="brand__name">TutorTrack</h1>
+          <p class="brand__tagline">家教课时管理 · 数据保存在本机浏览器</p>
+        </div>
+      </div>
+    </header>
+
+    <div id="storage-warning" class="banner" role="alert" hidden></div>
+
+    <main id="main">
+      <!-- 收入概览 -->
+      <section class="panel" aria-labelledby="stats-title">
+        <div class="panel__head">
+          <div>
+            <h2 id="stats-title">收入概览</h2>
+            <p class="muted" id="stats-hint">只统计当前自然月</p>
+          </div>
+          <div class="stats-controls">
+            <p class="period-label" id="period-label">—</p>
+            <div class="segmented" role="group" aria-label="统计范围">
+              <button type="button" data-period="month" aria-pressed="true">本月</button>
+              <button type="button" data-period="year" aria-pressed="false">全年</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="stats">
+          <article class="stat stat--income">
+            <p class="stat__label" id="stat-receivable-label">本月应收</p>
+            <p class="stat__value" id="stat-receivable">¥0.00</p>
+          </article>
+          <article class="stat stat--paid">
+            <p class="stat__label" id="stat-paid-label">本月已收</p>
+            <p class="stat__value" id="stat-paid">¥0.00</p>
+            <p class="stat__sub" id="stat-paid-sub">0 节</p>
+          </article>
+          <article class="stat stat--unpaid">
+            <p class="stat__label" id="stat-unpaid-label">本月待收</p>
+            <p class="stat__value" id="stat-unpaid">¥0.00</p>
+            <p class="stat__sub" id="stat-unpaid-sub">0 节</p>
+          </article>
+          <article class="stat">
+            <p class="stat__label">课程次数</p>
+            <p class="stat__value" id="stat-count">0 节</p>
+          </article>
+          <article class="stat">
+            <p class="stat__label">总时长</p>
+            <p class="stat__value" id="stat-duration">0 分钟</p>
+          </article>
+        </div>
+      </section>
+
+      <!-- 学生管理 -->
+      <section class="panel" aria-labelledby="students-title">
+        <div class="panel__head">
+          <div>
+            <h2 id="students-title">学生管理</h2>
+            <p class="muted">添加学生并设置默认时薪</p>
+          </div>
+          <p class="count-badge" id="student-count">0 位</p>
+        </div>
+
+        <form id="student-form" novalidate>
+          <div class="form-grid form-grid--students">
+            <div class="field">
+              <label for="student-name">学生昵称</label>
+              <input type="text" id="student-name" name="name" maxlength="20" placeholder="例如：小明" autocomplete="off" required>
+              <p class="field__error" id="student-name-error" hidden></p>
+            </div>
+
+            <div class="field">
+              <label for="student-grade">年级</label>
+              <input type="text" id="student-grade" name="grade" maxlength="20" placeholder="例如：初二">
+              <p class="field__error" id="student-grade-error" hidden></p>
+            </div>
+
+            <div class="field">
+              <label for="student-subject">科目</label>
+              <input type="text" id="student-subject" name="subject" maxlength="20" placeholder="例如：数学">
+              <p class="field__error" id="student-subject-error" hidden></p>
+            </div>
+
+            <div class="field">
+              <label for="student-rate">默认时薪（元/小时）</label>
+              <input type="number" id="student-rate" name="rate" min="0" max="10000" step="10" inputmode="decimal" placeholder="例如：120" required>
+              <p class="field__error" id="student-rate-error" hidden></p>
+            </div>
+          </div>
+
+          <div class="form-footer">
+            <p class="muted" id="student-form-hint">填写学生信息后点击「添加学生」</p>
+            <div class="form-actions">
+              <button type="button" class="btn btn--ghost" id="student-cancel" hidden>取消编辑</button>
+              <button type="submit" class="btn btn--primary" id="student-submit">添加学生</button>
+            </div>
+          </div>
+        </form>
+
+        <ul class="student-list" id="student-list"></ul>
+
+        <div class="empty empty--compact" id="student-empty-state">
+          <p class="empty__title">还没有学生</p>
+          <p class="empty__hint">先在上面的表单添加一位学生，再记录课程。</p>
+        </div>
+      </section>
+
+      <!-- 添加记录 -->
+      <section class="panel" aria-labelledby="form-title">
+        <div class="panel__head">
+          <div>
+            <h2 id="form-title">记一节课</h2>
+            <p class="muted">收入 = 时长 ÷ 60 × 每小时课时费</p>
+          </div>
+        </div>
+
+        <form id="lesson-form" novalidate>
+          <div class="form-grid">
+            <div class="field field--full">
+              <label for="student">学生</label>
+              <select id="student" name="studentId" required>
+                <option value="">还没有学生，请先添加</option>
+              </select>
+              <p class="field__hint" id="student-hint" hidden>还没有学生，请先在上方「学生管理」中添加。</p>
+              <p class="field__error" id="student-error" hidden></p>
+            </div>
+
+            <div class="field">
+              <label for="date">上课日期</label>
+              <input type="date" id="date" name="date" required>
+              <p class="field__error" id="date-error" hidden></p>
+            </div>
+
+            <div class="field">
+              <label for="duration">时长（分钟）</label>
+              <input type="number" id="duration" name="duration" min="1" max="1440" step="1" inputmode="numeric" placeholder="例如：90" required>
+              <p class="field__error" id="duration-error" hidden></p>
+            </div>
+
+            <div class="field">
+              <label for="rate">课时费（元/小时）</label>
+              <input type="number" id="rate" name="rate" min="0" max="10000" step="10" inputmode="decimal" placeholder="例如：120" required>
+              <p class="field__error" id="rate-error" hidden></p>
+            </div>
+          </div>
+
+          <div class="form-footer">
+            <p class="income-preview">本节课收入：<strong id="income-preview">—</strong></p>
+            <button type="submit" class="btn btn--primary">添加记录</button>
+          </div>
+        </form>
+      </section>
+
+      <!-- 课程记录 -->
+      <section class="panel" aria-labelledby="records-title">
+        <div class="panel__head">
+          <div>
+            <h2 id="records-title">课程记录</h2>
+            <p class="muted" id="records-hint">按日期从新到旧排列</p>
+          </div>
+          <div class="records-controls">
+            <p class="count-badge" id="lesson-count">0 条</p>
+            <div class="segmented" role="group" aria-label="课程记录视图">
+              <button type="button" data-view="list" aria-pressed="true">列表视图</button>
+              <button type="button" data-view="calendar" aria-pressed="false">日历视图</button>
+            </div>
+          </div>
+        </div>
+
+        <div id="list-view">
+          <ul class="lesson-list" id="lesson-list"></ul>
+
+          <div class="empty" id="empty-state">
+            <p class="empty__title">还没有课程记录</p>
+            <p class="empty__hint">在上面填写一节课程，点击「添加记录」后就会出现在这里。</p>
+          </div>
+        </div>
+
+        <div class="calendar" id="calendar-view" hidden>
+          <div class="calendar__toolbar">
+            <div class="calendar__nav">
+              <button type="button" class="btn-icon btn-icon--nav" data-action="calendar-prev" aria-label="上个月">‹</button>
+              <p class="calendar__title" id="calendar-title">—</p>
+              <button type="button" class="btn-icon btn-icon--nav" data-action="calendar-next" aria-label="下个月">›</button>
+            </div>
+            <button type="button" class="btn btn--ghost btn--small" data-action="calendar-today">今天</button>
+          </div>
+
+          <div class="calendar__weekdays" aria-hidden="true">
+            <span>一</span>
+            <span>二</span>
+            <span>三</span>
+            <span>四</span>
+            <span>五</span>
+            <span>六</span>
+            <span>日</span>
+          </div>
+
+          <div class="calendar__grid" id="calendar-grid" role="grid" aria-label="课程日历"></div>
+
+          <div class="calendar__detail">
+            <div class="calendar__detail-head">
+              <div>
+                <h3 id="calendar-day-title">选择日期</h3>
+                <p class="muted" id="calendar-day-summary">点击日历中的日期查看当天课程。</p>
+              </div>
+              <p class="count-badge" id="calendar-day-count">0 条</p>
+            </div>
+
+            <ul class="lesson-list lesson-list--day" id="calendar-day-list"></ul>
+
+            <div class="empty empty--compact" id="calendar-day-empty" hidden>
+              <p class="empty__title" id="calendar-day-empty-title">当天没有课程</p>
+              <p class="empty__hint" id="calendar-day-empty-hint">可以选择其他日期，或在上方「记一节课」中添加。</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 收入分析 -->
+      <section class="panel" aria-labelledby="analysis-title">
+        <div class="panel__head">
+          <div>
+            <h2 id="analysis-title">收入分析</h2>
+            <p class="muted">根据课程记录实时计算 · 金额单位：元</p>
+          </div>
+        </div>
+
+        <article class="analysis-block">
+          <div class="analysis-block__head">
+            <div>
+              <h3>月度收入趋势</h3>
+              <p class="muted">没有课程的月份显示为 0，点击柱形可查看具体金额</p>
+            </div>
+            <label class="select-inline" for="trend-year">
+              <span>年份</span>
+              <select id="trend-year"></select>
+            </label>
+          </div>
+
+          <div class="chart-scroll">
+            <div class="trend-chart" id="trend-chart" role="img" aria-label="月度收入趋势图"></div>
+          </div>
+          <p class="chart-note" id="trend-empty" hidden>该年份还没有课程记录，12 个月都显示为 0。</p>
+        </article>
+
+        <article class="analysis-block">
+          <div class="analysis-block__head">
+            <div>
+              <h3>应收 / 已收 / 待收</h3>
+              <p class="muted">应收 = 已收 + 待收</p>
+            </div>
+            <div class="analysis-range">
+              <div class="segmented" role="group" aria-label="收入对比范围">
+                <button type="button" data-analysis-period="month" aria-pressed="true">按月</button>
+                <button type="button" data-analysis-period="year" aria-pressed="false">按年</button>
+              </div>
+              <label class="select-inline" for="analysis-year">
+                <span>年份</span>
+                <select id="analysis-year"></select>
+              </label>
+              <label class="select-inline" for="analysis-month">
+                <span>月份</span>
+                <select id="analysis-month"></select>
+              </label>
+            </div>
+          </div>
+
+          <div class="payment-cards">
+            <div class="payment-card payment-card--total">
+              <p class="payment-card__label">应收</p>
+              <p class="payment-card__value" id="analysis-receivable">¥0.00</p>
+              <p class="payment-card__sub" id="analysis-range-label">—</p>
+            </div>
+            <div class="payment-card payment-card--paid">
+              <p class="payment-card__label">已收</p>
+              <p class="payment-card__value" id="analysis-paid">¥0.00</p>
+              <p class="payment-card__sub" id="analysis-paid-sub">0 节</p>
+            </div>
+            <div class="payment-card payment-card--unpaid">
+              <p class="payment-card__label">待收</p>
+              <p class="payment-card__value" id="analysis-unpaid">¥0.00</p>
+              <p class="payment-card__sub" id="analysis-unpaid-sub">0 节</p>
+            </div>
+          </div>
+
+          <div class="split-bar" id="payment-bar" role="img" aria-label="已收与待收占比">
+            <span class="split-bar__paid" id="payment-bar-paid"></span>
+            <span class="split-bar__unpaid" id="payment-bar-unpaid"></span>
+          </div>
+          <div class="chart-legend">
+            <span><i class="legend-dot legend-dot--paid" aria-hidden="true"></i>已收</span>
+            <span><i class="legend-dot legend-dot--unpaid" aria-hidden="true"></i>待收</span>
+            <span class="chart-note" id="payment-empty" hidden>当前范围内还没有课程记录。</span>
+          </div>
+        </article>
+
+        <article class="analysis-block">
+          <div class="analysis-block__head">
+            <div>
+              <h3>学生收入排行</h3>
+              <p class="muted" id="student-chart-hint">按收入从高到低排列</p>
+            </div>
+          </div>
+
+          <div class="rank-chart" id="student-chart"></div>
+          <div class="empty empty--compact" id="student-chart-empty" hidden>
+            <p class="empty__title">当前范围还没有学生收入</p>
+            <p class="empty__hint">添加课程记录后，这里会按学生汇总收入并排序。</p>
+          </div>
+        </article>
+      </section>
+
+      <!-- 数据管理 -->
+      <section class="panel" aria-labelledby="data-title">
+        <div class="panel__head">
+          <div>
+            <h2 id="data-title">数据管理</h2>
+            <p class="muted">备份文件只保存在你的设备上，不会上传到任何服务器</p>
+          </div>
+        </div>
+
+        <div class="data-grid">
+          <article class="data-card">
+            <h3>导出备份</h3>
+            <p class="muted">将全部学生和课程记录导出为 JSON 文件，可用于以后恢复或换设备。</p>
+            <button type="button" class="btn btn--primary" id="export-backup">导出备份</button>
+          </article>
+
+          <article class="data-card">
+            <h3>导入备份</h3>
+            <p class="muted">选择之前导出的 JSON 文件。导入会替换当前全部数据，操作前会再次确认。</p>
+            <input type="file" id="import-file" accept="application/json,.json" hidden>
+            <button type="button" class="btn btn--ghost" id="import-trigger">选择备份文件</button>
+            <p class="data-status" id="import-status" role="status" hidden></p>
+          </article>
+        </div>
+
+        <p class="data-summary" id="data-summary">当前数据：0 名学生 · 0 条课程记录</p>
+      </section>
+    </main>
+
+    <footer class="site-footer">
+      <p>数据只保存在当前浏览器中，清除浏览器数据会一并删除。建议定期备份。</p>
+    </footer>
+  </div>
+
+  <!-- 学生列表项模板 -->
+  <template id="student-item-template">
+    <li class="student">
+      <div class="student__who">
+        <p class="student__name" data-field="name"></p>
+        <p class="student__meta" data-field="meta"></p>
+      </div>
+      <p class="student__rate" data-field="rate"></p>
+      <div class="student__actions">
+        <button type="button" class="btn-icon" data-action="edit-student">编辑</button>
+        <button type="button" class="btn-icon btn-icon--danger" data-action="delete-student">删除</button>
+      </div>
+    </li>
+  </template>
+
+  <!-- 课程列表项模板 -->
+  <template id="lesson-item-template">
+    <li class="lesson">
+      <div class="lesson__who">
+        <p class="lesson__student" data-field="student"></p>
+        <p class="lesson__date" data-field="date"></p>
+      </div>
+      <p class="lesson__meta">
+        <span data-field="duration"></span>
+        <span class="lesson__dot" aria-hidden="true">·</span>
+        <span data-field="rate"></span>
+      </p>
+      <p class="lesson__income" data-field="income"></p>
+      <div class="lesson__side">
+        <span class="status-badge" data-field="status"></span>
+        <div class="lesson__actions">
+          <button type="button" class="btn-icon" data-action="toggle-paid"></button>
+          <button type="button" class="btn-icon" data-action="edit">编辑</button>
+          <button type="button" class="btn-icon btn-icon--danger" data-action="delete">删除</button>
+        </div>
+      </div>
+    </li>
+  </template>
+
+  <!-- 日历当天课程模板 -->
+  <template id="calendar-lesson-template">
+    <li class="day-lesson">
+      <div class="day-lesson__main">
+        <p class="day-lesson__student" data-field="student"></p>
+        <p class="day-lesson__meta">
+          <span data-field="duration"></span>
+          <span class="lesson__dot" aria-hidden="true">·</span>
+          <span data-field="rate"></span>
+        </p>
+      </div>
+      <p class="day-lesson__income" data-field="income"></p>
+      <span class="status-badge" data-field="status"></span>
+      <div class="day-lesson__actions">
+        <button type="button" class="btn-icon" data-action="toggle-paid"></button>
+        <button type="button" class="btn-icon" data-action="edit">编辑</button>
+        <button type="button" class="btn-icon btn-icon--danger" data-action="delete">删除</button>
+      </div>
+    </li>
+  </template>
+
+  <!-- 编辑课程弹窗 -->
+  <dialog class="modal" id="lesson-dialog" aria-labelledby="lesson-dialog-title">
+    <form id="lesson-edit-form" class="modal__body" novalidate>
+      <div class="modal__head">
+        <div>
+          <h2 id="lesson-dialog-title">编辑课程记录</h2>
+          <p class="muted">修改后点击「保存」，原记录会被更新。</p>
+        </div>
+        <button type="button" class="modal__close" data-action="close-edit" aria-label="关闭编辑窗口">×</button>
+      </div>
+
+      <div class="form-grid">
+        <div class="field field--full">
+          <label for="edit-student">学生</label>
+          <select id="edit-student" name="studentId" required></select>
+          <p class="field__error" id="edit-student-error" hidden></p>
+        </div>
+
+        <div class="field">
+          <label for="edit-date">上课日期</label>
+          <input type="date" id="edit-date" name="date" required>
+          <p class="field__error" id="edit-date-error" hidden></p>
+        </div>
+
+        <div class="field">
+          <label for="edit-duration">时长（分钟）</label>
+          <input type="number" id="edit-duration" name="duration" min="1" max="1440" step="1" inputmode="numeric" required>
+          <p class="field__error" id="edit-duration-error" hidden></p>
+        </div>
+
+        <div class="field">
+          <label for="edit-rate">课时费（元/小时）</label>
+          <input type="number" id="edit-rate" name="rate" min="0" max="10000" step="10" inputmode="decimal" required>
+          <p class="field__error" id="edit-rate-error" hidden></p>
+        </div>
+
+        <div class="field field--full">
+          <span class="field-label">收款状态</span>
+          <div class="radio-row">
+            <label class="radio">
+              <input type="radio" name="paid" value="unpaid">
+              <span>待收款</span>
+            </label>
+            <label class="radio">
+              <input type="radio" name="paid" value="paid">
+              <span>已收款</span>
+            </label>
+          </div>
+        </div>
+      </div>
+
+      <div class="modal__footer">
+        <p class="income-preview">本节课收入：<strong id="edit-income-preview">—</strong></p>
+        <div class="form-actions">
+          <button type="button" class="btn btn--ghost" id="lesson-edit-cancel">取消</button>
+          <button type="submit" class="btn btn--primary">保存</button>
+        </div>
+      </div>
+    </form>
+  </dialog>
+
+  <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+
+  <noscript>
+    <div class="banner">这个页面需要启用 JavaScript 才能工作，请在浏览器设置中允许 JavaScript。</div>
+  </noscript>
+
+  <!-- 顺序很重要：calc → storage → ui → app -->
+  <script src="js/calc.js" defer></script>
+  <script src="js/storage.js" defer></script>
+  <script src="js/ui.js" defer></script>
+  <script src="js/app.js" defer></script>
+</body>
+</html>

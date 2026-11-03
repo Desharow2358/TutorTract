@@ -1,0 +1,1544 @@
+/* ============================================================
+   TutorTrack 样式
+   1. 变量与基础
+   2. 布局与标题
+   3. 概览卡片
+   4. 表单
+   5. 记录列表、日历、收入分析、数据管理
+   6. 提示、空状态、页脚
+   7. 响应式
+   ============================================================ */
+
+/* ---------- 1. 变量与基础 ---------- */
+:root {
+  --bg: #eef2f9;
+  --surface: #ffffff;
+  --surface-soft: #f7f9fd;
+  --ink: #16203a;
+  --ink-soft: #3d4a63;
+  --muted: #5f6c85;
+  --line: #dfe6f2;
+  --primary: #2f6fed;
+  --primary-dark: #1f55c9;
+  --primary-soft: #e8efff;
+  --success: #107a54;
+  --danger: #cf3b3b;
+  --danger-soft: #fdeaea;
+  --radius-lg: 18px;
+  --radius-md: 12px;
+  --shadow: 0 18px 40px -28px rgba(22, 32, 58, 0.45);
+  --font: "Segoe UI", "Microsoft YaHei", "PingFang SC", system-ui, -apple-system, sans-serif;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+[hidden] {
+  display: none !important;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  font-family: var(--font);
+  font-size: 16px;
+  line-height: 1.6;
+  color: var(--ink);
+  background:
+    radial-gradient(900px 420px at 15% -8%, #dfe9ff 0%, transparent 60%),
+    radial-gradient(700px 380px at 95% 0%, #e6f7f1 0%, transparent 55%),
+    var(--bg);
+}
+
+h1,
+h2,
+p {
+  margin: 0;
+}
+
+button,
+input,
+select {
+  font: inherit;
+  color: inherit;
+}
+
+:focus-visible {
+  outline: 3px solid rgba(47, 111, 237, 0.4);
+  outline-offset: 2px;
+}
+
+.skip-link {
+  position: absolute;
+  left: -9999px;
+  top: 0;
+  padding: 8px 16px;
+  background: var(--surface);
+  color: var(--primary-dark);
+  border-radius: 0 0 10px 0;
+  z-index: 100;
+}
+
+.skip-link:focus {
+  left: 0;
+}
+
+/* ---------- 2. 布局与标题 ---------- */
+.page {
+  width: min(100% - 32px, 880px);
+  margin: 0 auto;
+  padding: 36px 0 48px;
+}
+
+.site-header {
+  margin-bottom: 22px;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.brand__mark {
+  display: grid;
+  place-items: center;
+  width: 48px;
+  height: 48px;
+  flex: 0 0 auto;
+  border-radius: 14px;
+  background: linear-gradient(145deg, #3f7bff, #274ecf);
+  color: #fff;
+  font-size: 1.4rem;
+  font-weight: 800;
+  box-shadow: 0 10px 20px -10px rgba(47, 111, 237, 0.9);
+}
+
+.brand__name {
+  font-size: 1.5rem;
+  letter-spacing: -0.02em;
+  line-height: 1.25;
+}
+
+.brand__tagline {
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.panel {
+  margin-bottom: 18px;
+  padding: 22px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow);
+}
+
+.panel__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.panel__head h2 {
+  font-size: 1.05rem;
+  letter-spacing: -0.01em;
+}
+
+.muted {
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.period-label {
+  flex: 0 0 auto;
+  padding: 4px 12px;
+  border-radius: 999px;
+  background: var(--primary-soft);
+  color: var(--primary-dark);
+  font-size: 0.84rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.stats-controls {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.segmented {
+  display: inline-flex;
+  gap: 2px;
+  padding: 3px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface-soft);
+}
+
+.segmented button {
+  padding: 5px 14px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.segmented button[aria-pressed="true"] {
+  background: #fff;
+  color: var(--primary-dark);
+  box-shadow: 0 2px 8px rgba(22, 32, 58, 0.12);
+}
+
+/* ---------- 3. 概览卡片 ---------- */
+.stats {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.stat {
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--surface-soft);
+}
+
+.stat--income {
+  border-color: #cfe0ff;
+  background: linear-gradient(150deg, #e9f0ff, #f7faff);
+}
+
+.stat--paid {
+  border-color: #c8ebdd;
+  background: linear-gradient(150deg, #e9f8f2, #f8fdfb);
+}
+
+.stat--unpaid {
+  border-color: #f4e2bd;
+  background: linear-gradient(150deg, #fff6e6, #fffdf8);
+}
+
+.stat__label {
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.stat__value {
+  margin-top: 4px;
+  font-size: clamp(1.05rem, 2.3vw, 1.35rem);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.stat__sub {
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+
+.stat--income .stat__value {
+  color: var(--primary-dark);
+}
+
+.stat--paid .stat__value {
+  color: var(--success);
+}
+
+.stat--unpaid .stat__value {
+  color: #9a6400;
+}
+
+/* ---------- 4. 表单 ---------- */
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.form-grid--students {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.form-grid--students > .field {
+  grid-column: span 1;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  grid-column: span 2;
+}
+
+.field--full {
+  grid-column: 1 / -1;
+}
+
+.field label {
+  color: var(--ink-soft);
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+input[type="text"],
+input[type="date"],
+input[type="number"],
+select {
+  width: 100%;
+  min-width: 0;
+  padding: 10px 12px;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+select {
+  cursor: pointer;
+}
+
+input:hover,
+select:hover {
+  border-color: #c6d2e6;
+}
+
+input:focus,
+select:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px rgba(47, 111, 237, 0.15);
+}
+
+input.is-invalid,
+select.is-invalid {
+  border-color: var(--danger);
+  box-shadow: 0 0 0 3px rgba(207, 59, 59, 0.12);
+}
+
+.field__error {
+  color: var(--danger);
+  font-size: 0.78rem;
+  line-height: 1.4;
+}
+
+.field__hint {
+  color: var(--muted);
+  font-size: 0.78rem;
+  line-height: 1.4;
+}
+
+.form-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 14px;
+  margin-top: 18px;
+}
+
+.income-preview {
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.income-preview strong {
+  color: var(--success);
+  font-size: 1.15rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.btn {
+  border: 0;
+  border-radius: 10px;
+  padding: 11px 24px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s ease, transform 0.1s ease;
+}
+
+.btn--primary {
+  background: var(--primary);
+  color: #fff;
+  box-shadow: 0 10px 20px -12px rgba(47, 111, 237, 0.9);
+}
+
+.btn--primary:hover {
+  background: var(--primary-dark);
+}
+
+.btn--primary:active {
+  transform: translateY(1px);
+}
+
+.btn--ghost {
+  background: #fff;
+  border: 1px solid var(--line);
+  color: var(--ink-soft);
+}
+
+.btn--ghost:hover {
+  border-color: var(--primary);
+  background: var(--primary-soft);
+  color: var(--primary-dark);
+}
+
+.form-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+/* ---------- 5. 记录列表 ---------- */
+.count-badge {
+  flex: 0 0 auto;
+  padding: 4px 12px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface-soft);
+  color: var(--ink-soft);
+  font-size: 0.8rem;
+  white-space: nowrap;
+}
+
+.lesson-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.lesson {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 150px 100px 184px;
+  grid-template-areas: "who meta income side";
+  align-items: center;
+  gap: 12px;
+  padding: 13px 2px;
+  border-top: 1px solid var(--line);
+}
+
+.lesson:first-child {
+  border-top: 0;
+}
+
+.lesson__who {
+  grid-area: who;
+  min-width: 0;
+}
+
+.lesson__student {
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lesson__date {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.lesson__meta {
+  grid-area: meta;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 6px;
+  color: var(--ink-soft);
+  font-size: 0.82rem;
+}
+
+.lesson__dot {
+  color: #b9c4d8;
+}
+
+.lesson__income {
+  grid-area: income;
+  text-align: right;
+  color: var(--success);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.lesson__side {
+  grid-area: side;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 5px;
+  min-width: 0;
+}
+
+.lesson__actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 2px;
+}
+
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 10px;
+  border-radius: 999px;
+  font-size: 0.74rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.status-badge::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.status-badge--paid {
+  background: #e4f6ee;
+  color: var(--success);
+}
+
+.status-badge--unpaid {
+  background: #fff3dd;
+  color: #9a6400;
+}
+
+/* ---------- 5.1 学生列表 ---------- */
+.student-list {
+  margin: 18px 0 0;
+  padding: 0;
+  list-style: none;
+  border-top: 1px solid var(--line);
+}
+
+.student {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 130px auto;
+  grid-template-areas: "who rate actions";
+  align-items: center;
+  gap: 12px;
+  padding: 12px 2px;
+  border-bottom: 1px solid var(--line);
+}
+
+.student:last-child {
+  border-bottom: 0;
+}
+
+.student--editing {
+  background: linear-gradient(90deg, rgba(47, 111, 237, 0.07), transparent);
+}
+
+.student__who {
+  grid-area: who;
+  min-width: 0;
+}
+
+.student__name {
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.student__meta {
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.student__rate {
+  grid-area: rate;
+  color: var(--ink-soft);
+  font-size: 0.85rem;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.student__actions {
+  grid-area: actions;
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.btn-icon {
+  padding: 4px 10px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 0.8rem;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+.btn-icon:hover {
+  background: var(--primary-soft);
+  color: var(--primary-dark);
+}
+
+.btn-icon--danger:hover {
+  border-color: #f6cccc;
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+/* ---------- 5.2 编辑课程弹窗 ---------- */
+.modal {
+  width: min(100% - 32px, 560px);
+  max-height: calc(100vh - 48px);
+  margin: auto;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: 0 30px 70px -30px rgba(22, 32, 58, 0.65);
+  overflow: auto;
+}
+
+.modal::backdrop {
+  background: rgba(22, 32, 58, 0.45);
+}
+
+.modal__body {
+  padding: 22px;
+}
+
+.modal__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+  margin-bottom: 18px;
+}
+
+.modal__head h2 {
+  font-size: 1.08rem;
+  letter-spacing: -0.01em;
+}
+
+.modal__close {
+  flex: 0 0 auto;
+  width: 32px;
+  height: 32px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #fff;
+  color: var(--muted);
+  font-size: 1.2rem;
+  line-height: 1;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+.modal__close:hover {
+  border-color: var(--primary);
+  background: var(--primary-soft);
+  color: var(--primary-dark);
+}
+
+.modal__footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 14px;
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+}
+
+.field-label {
+  color: var(--ink-soft);
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.radio-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.radio {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 16px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: #fff;
+  color: var(--ink-soft);
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease, color 0.15s ease;
+}
+
+.radio input {
+  width: 15px;
+  height: 15px;
+  margin: 0;
+  accent-color: var(--primary);
+  cursor: pointer;
+}
+
+.radio:hover {
+  border-color: #c6d2e6;
+}
+
+.radio:has(input:checked) {
+  border-color: var(--primary);
+  background: var(--primary-soft);
+  color: var(--primary-dark);
+}
+
+/* ---------- 6. 提示、空状态、页脚 ---------- */
+.banner {
+  margin-bottom: 16px;
+  padding: 12px 16px;
+  border: 1px solid #f4dba5;
+  border-radius: 12px;
+  background: #fff6e5;
+  color: #7a5200;
+  font-size: 0.85rem;
+}
+
+.empty {
+  padding: 28px 20px;
+  border: 1px dashed var(--line);
+  border-radius: var(--radius-md);
+  background: var(--surface-soft);
+  text-align: center;
+}
+
+.empty__title {
+  font-weight: 600;
+}
+
+.empty__hint {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 0.86rem;
+}
+
+.empty--compact {
+  margin-top: 16px;
+  padding: 20px;
+}
+
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: 24px;
+  z-index: 50;
+  max-width: min(90vw, 440px);
+  padding: 11px 20px;
+  transform: translateX(-50%);
+  border-radius: 999px;
+  background: #16203a;
+  color: #fff;
+  font-size: 0.86rem;
+  text-align: center;
+  box-shadow: 0 16px 30px -16px rgba(0, 0, 0, 0.6);
+}
+
+.toast[data-state="success"] {
+  background: #0f5c40;
+}
+
+.toast[data-state="error"] {
+  background: #8d2626;
+}
+
+.site-footer {
+  margin-top: 22px;
+  color: var(--muted);
+  font-size: 0.78rem;
+  text-align: center;
+}
+
+/* ---------- 5.3 视图切换与日历 ---------- */
+.records-controls {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.calendar {
+  margin-top: 2px;
+}
+
+.calendar__toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.calendar__nav {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.calendar__title {
+  min-width: 132px;
+  font-weight: 700;
+  font-size: 1rem;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.btn-icon--nav {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #fff;
+  color: var(--ink-soft);
+  font-size: 1.25rem;
+  line-height: 1;
+}
+
+.btn-icon--nav:hover {
+  border-color: var(--primary);
+  background: var(--primary-soft);
+  color: var(--primary-dark);
+}
+
+.btn--small {
+  padding: 8px 16px;
+  font-size: 0.84rem;
+}
+
+.calendar__weekdays {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 6px;
+  margin-bottom: 6px;
+}
+
+.calendar__weekdays span {
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-align: center;
+}
+
+.calendar__grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.calendar__cell {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 3px;
+  min-width: 0;
+  min-height: 88px;
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #fff;
+  color: var(--ink);
+  text-align: left;
+  cursor: pointer;
+  overflow: hidden;
+  transition: border-color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
+}
+
+.calendar__cell:hover {
+  border-color: #c6d2e6;
+  background: var(--surface-soft);
+}
+
+.calendar__cell--outside {
+  background: #fbfcfe;
+  color: #9aa6bb;
+}
+
+.calendar__cell--has-lessons {
+  background: linear-gradient(160deg, #f2f7ff, #fff);
+}
+
+.calendar__cell--outside.calendar__cell--has-lessons {
+  background: #f7f9fd;
+  color: #9aa6bb;
+}
+
+.calendar__cell--today {
+  border-color: var(--primary);
+}
+
+.calendar__cell--selected {
+  border-color: var(--primary);
+  background: var(--primary-soft);
+  box-shadow: inset 0 0 0 1px var(--primary);
+}
+
+.calendar__cell--today .calendar__daynum {
+  display: inline-grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--primary);
+  color: #fff;
+}
+
+.calendar__daynum {
+  font-size: 0.84rem;
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.calendar__cell-info {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 6px;
+  font-size: 0.68rem;
+  line-height: 1.3;
+}
+
+.calendar__count {
+  color: var(--primary-dark);
+  font-weight: 700;
+}
+
+.calendar__amount {
+  color: var(--success);
+  font-variant-numeric: tabular-nums;
+}
+
+.calendar__names {
+  display: block;
+  max-width: 100%;
+  color: var(--muted);
+  font-size: 0.66rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.calendar__detail {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+}
+
+.calendar__detail-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.calendar__detail-head h3 {
+  font-size: 0.98rem;
+}
+
+.lesson-list--day {
+  margin-top: 4px;
+}
+
+.day-lesson {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 110px 76px auto;
+  grid-template-areas: "main income status actions";
+  align-items: center;
+  gap: 10px;
+  padding: 10px 2px;
+  border-top: 1px solid var(--line);
+}
+
+.day-lesson:first-child {
+  border-top: 0;
+}
+
+.day-lesson__main {
+  grid-area: main;
+  min-width: 0;
+}
+
+.day-lesson__student {
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.day-lesson__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 6px;
+  color: var(--ink-soft);
+  font-size: 0.78rem;
+}
+
+.day-lesson__income {
+  grid-area: income;
+  color: var(--success);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.day-lesson [data-field="status"] {
+  grid-area: status;
+  justify-self: center;
+}
+
+.day-lesson__actions {
+  grid-area: actions;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 2px;
+}
+
+/* ---------- 5.4 收入分析 ---------- */
+.analysis-block {
+  padding: 18px 0;
+  border-top: 1px solid var(--line);
+}
+
+.analysis-block:first-of-type {
+  padding-top: 0;
+  border-top: 0;
+}
+
+.analysis-block:last-child {
+  padding-bottom: 0;
+}
+
+.analysis-block__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 14px;
+  margin-bottom: 14px;
+}
+
+.analysis-block h3 {
+  font-size: 0.98rem;
+  margin: 0 0 2px;
+}
+
+.analysis-range {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.select-inline {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 0.78rem;
+  white-space: nowrap;
+}
+
+.select-inline select {
+  width: auto;
+  padding: 6px 28px 6px 10px;
+  border-radius: 8px;
+  background-color: #fff;
+  font-size: 0.8rem;
+}
+
+.chart-scroll {
+  overflow-x: auto;
+  padding-bottom: 4px;
+}
+
+.trend-chart {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(46px, 1fr));
+  align-items: end;
+  gap: 6px;
+  min-width: 620px;
+}
+
+.trend-chart__col {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+}
+
+.trend-chart__value {
+  color: var(--muted);
+  font-size: 0.64rem;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.trend-chart__track {
+  display: flex;
+  align-items: flex-end;
+  width: 100%;
+  height: 132px;
+  border-radius: 6px;
+  background: var(--surface-soft);
+  overflow: hidden;
+}
+
+.trend-chart__bar {
+  display: block;
+  width: 100%;
+  border-radius: 6px 6px 0 0;
+  background: linear-gradient(180deg, #5b90ff, #2f6fed);
+  transition: height 0.2s ease;
+}
+
+.trend-chart__label {
+  color: var(--muted);
+  font-size: 0.7rem;
+  white-space: nowrap;
+}
+
+.chart-note {
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+
+#trend-empty {
+  margin-top: 8px;
+}
+
+.payment-cards {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.payment-card {
+  padding: 13px 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--surface-soft);
+}
+
+.payment-card--total {
+  border-color: #cfe0ff;
+  background: linear-gradient(150deg, #e9f0ff, #f7faff);
+}
+
+.payment-card--paid {
+  border-color: #c8ebdd;
+  background: linear-gradient(150deg, #e9f8f2, #f8fdfb);
+}
+
+.payment-card--unpaid {
+  border-color: #f4e2bd;
+  background: linear-gradient(150deg, #fff6e6, #fffdf8);
+}
+
+.payment-card__label {
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.payment-card__value {
+  margin-top: 2px;
+  font-size: 1.05rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+.payment-card--total .payment-card__value {
+  color: var(--primary-dark);
+}
+
+.payment-card--paid .payment-card__value {
+  color: var(--success);
+}
+
+.payment-card--unpaid .payment-card__value {
+  color: #9a6400;
+}
+
+.payment-card__sub {
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 0.72rem;
+}
+
+.split-bar {
+  display: flex;
+  height: 14px;
+  margin-top: 14px;
+  border-radius: 999px;
+  background: var(--line);
+  overflow: hidden;
+}
+
+.split-bar__paid {
+  background: #2f9e78;
+  transition: width 0.2s ease;
+}
+
+.split-bar__unpaid {
+  background: #e0a33a;
+  transition: width 0.2s ease;
+}
+
+.chart-legend {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 8px;
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+
+.chart-legend > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.legend-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.legend-dot--paid {
+  background: #2f9e78;
+}
+
+.legend-dot--unpaid {
+  background: #e0a33a;
+}
+
+.rank-chart {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.rank-row {
+  min-width: 0;
+}
+
+.rank-row__top {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 4px;
+}
+
+.rank-row__name {
+  min-width: 0;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rank-row__meta {
+  color: var(--muted);
+  font-size: 0.78rem;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.rank-row__track {
+  height: 9px;
+  border-radius: 999px;
+  background: var(--surface-soft);
+  overflow: hidden;
+}
+
+.rank-row__bar {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #6b9bff, #2f6fed);
+  transition: width 0.2s ease;
+}
+
+/* ---------- 5.5 数据管理 ---------- */
+.data-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.data-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--surface-soft);
+}
+
+.data-card h3 {
+  font-size: 0.95rem;
+  margin: 0;
+}
+
+.data-card .btn {
+  margin-top: auto;
+}
+
+.data-status {
+  padding: 6px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  font-size: 0.78rem;
+  line-height: 1.4;
+}
+
+.data-status[data-state="success"] {
+  border-color: #c8ebdd;
+  background: #f1fbf7;
+  color: var(--success);
+}
+
+.data-status[data-state="error"] {
+  border-color: #f6cccc;
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+.data-summary {
+  margin-top: 14px;
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+/* ---------- 7. 响应式 ---------- */
+@media (max-width: 720px) {
+  .page {
+    padding: 22px 0 40px;
+  }
+
+  .panel {
+    padding: 18px;
+  }
+
+  .panel__head {
+    flex-wrap: wrap;
+  }
+
+  .stats-controls {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .records-controls {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .calendar__grid,
+  .calendar__weekdays {
+    gap: 4px;
+  }
+
+  .calendar__cell {
+    min-height: 66px;
+    padding: 5px;
+    gap: 2px;
+  }
+
+  .calendar__title {
+    min-width: 112px;
+    font-size: 0.94rem;
+  }
+
+  .calendar__amount,
+  .calendar__names {
+    display: none;
+  }
+
+  .calendar__cell-info {
+    font-size: 0.62rem;
+  }
+
+  .calendar__detail-head {
+    flex-wrap: wrap;
+  }
+
+  .day-lesson {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      "main income"
+      "status actions";
+    row-gap: 6px;
+  }
+
+  .day-lesson [data-field="status"] {
+    justify-self: start;
+  }
+
+  .analysis-block__head {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .analysis-range {
+    width: 100%;
+  }
+
+  .payment-cards {
+    grid-template-columns: 1fr;
+  }
+
+  .trend-chart {
+    min-width: 560px;
+  }
+
+  .data-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .stats {
+    grid-template-columns: 1fr;
+  }
+
+  .stat {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 12px 16px;
+  }
+
+  .stat__value {
+    margin-top: 0;
+  }
+
+  .form-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .form-grid > .field {
+    grid-column: 1 / -1;
+  }
+
+  .form-footer {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .form-footer .btn {
+    width: 100%;
+  }
+
+  .student {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      "who rate"
+      "who actions";
+    row-gap: 4px;
+  }
+
+  .student__actions {
+    justify-self: end;
+    align-self: start;
+  }
+
+  .lesson {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      "who income"
+      "meta meta"
+      "side side";
+    row-gap: 6px;
+    padding: 12px 2px;
+  }
+
+  .lesson__income {
+    justify-self: end;
+  }
+
+  .lesson__meta {
+    font-size: 0.8rem;
+  }
+
+  .lesson__side {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    margin-top: 2px;
+  }
+
+  .lesson__actions {
+    justify-content: flex-end;
+  }
+
+  .modal {
+    width: calc(100% - 24px);
+    max-height: calc(100vh - 24px);
+  }
+
+  .modal__body {
+    padding: 18px;
+  }
+
+  .modal__footer {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .modal__footer .form-actions {
+    justify-content: flex-end;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition: none !important;
+    animation: none !important;
+  }
+}

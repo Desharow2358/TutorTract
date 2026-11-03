@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>TutorTrack · 计算逻辑自测</title>
+  <style>
+    :root {
+      --ink: #16203a;
+      --muted: #6d7a93;
+      --line: #dfe6f2;
+      --pass: #107a54;
+      --fail: #cf3b3b;
+      --font: "Segoe UI", "Microsoft YaHei", "PingFang SC", system-ui, sans-serif;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      padding: 32px 16px;
+      font-family: var(--font);
+      line-height: 1.6;
+      color: var(--ink);
+      background: #eef2f9;
+    }
+    main {
+      width: min(100%, 720px);
+      margin: 0 auto;
+      padding: 24px;
+      background: #fff;
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      box-shadow: 0 18px 40px -28px rgba(22, 32, 58, .45);
+    }
+    h1 { margin: 0 0 4px; font-size: 1.3rem; }
+    .sub { margin: 0 0 20px; color: var(--muted); font-size: .85rem; }
+    .summary {
+      padding: 12px 16px;
+      margin-bottom: 16px;
+      border-radius: 10px;
+      font-weight: 600;
+    }
+    .summary.ok { background: #e4f6ee; color: var(--pass); }
+    .summary.bad { background: #fdeaea; color: var(--fail); }
+    ol { margin: 0; padding-left: 22px; }
+    li { padding: 5px 0; border-bottom: 1px solid #eef2f9; font-size: .9rem; }
+    li:last-child { border-bottom: 0; }
+    .name { margin-right: 8px; }
+    .tag {
+      display: inline-block;
+      min-width: 42px;
+      margin-right: 8px;
+      font-size: .75rem;
+      font-weight: 700;
+      text-align: center;
+      border-radius: 999px;
+    }
+    .tag.pass { background: #e4f6ee; color: var(--pass); }
+    .tag.fail { background: #fdeaea; color: var(--fail); }
+    .detail { display: block; margin-top: 2px; color: var(--muted); font-size: .8rem; }
+    code { background: #f4f6fb; padding: 1px 5px; border-radius: 4px; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Calc 计算逻辑自测</h1>
+    <p class="sub">
+      这个页面只加载 <code>js/calc.js</code>，不依赖存储和界面。
+      双击打开即可运行，绿色代表通过，红色代表失败。
+    </p>
+    <div class="summary" id="summary">运行中…</div>
+    <ol id="results"></ol>
+  </main>
+
+  <script src="../js/calc.js"></script>
+  <script>
+    (function () {
+      'use strict';
+
+      var results = [];
+
+      function check(name, actual, expected) {
+        var pass = JSON.stringify(actual) === JSON.stringify(expected);
+        results.push({ name: name, pass: pass, actual: actual, expected: expected });
+      }
+
+      function show(value) {
+        return JSON.stringify(value);
+      }
+
+      /* ---------- 收入计算 ---------- */
+      check('90 分钟 × 120 元/小时 = 180', Calc.lessonIncome({ duration: 90, rate: 120 }), 180);
+      check('45 分钟 × 130 元/小时 = 97.5', Calc.lessonIncome({ duration: 45, rate: 130 }), 97.5);
+      check('60 分钟 × 100 元/小时 = 100', Calc.lessonIncome({ duration: 60, rate: 100 }), 100);
+      check('时长 0 时收入为 0', Calc.lessonIncome({ duration: 0, rate: 100 }), 0);
+      check('缺少数据时收入为 0', Calc.lessonIncome(null), 0);
+
+      /* ---------- 金额格式化 ---------- */
+      check('1860 显示为 1,860.00', Calc.formatMoney(1860), '1,860.00');
+      check('97.5 显示为 97.50', Calc.formatMoney(97.5), '97.50');
+      check('0 显示为 0.00', Calc.formatMoney(0), '0.00');
+
+      /* ---------- 时长格式化 ---------- */
+      check('150 分钟 = 2 小时 30 分钟', Calc.minutesToText(150), '2 小时 30 分钟');
+      check('60 分钟 = 1 小时', Calc.minutesToText(60), '1 小时');
+      check('45 分钟 = 45 分钟', Calc.minutesToText(45), '45 分钟');
+      check('0 分钟 = 0 分钟', Calc.minutesToText(0), '0 分钟');
+
+      /* ---------- 月份与日期 ---------- */
+      check('月份键取前 7 位', Calc.monthKey('2026-11-03'), '2026-11');
+      check('月份标签', Calc.monthLabel('2026-11'), '2026 年 11 月');
+      check('2026-02-28 合法', Calc.isValidDateString('2026-02-28'), true);
+      check('2026-02-30 非法', Calc.isValidDateString('2026-02-30'), false);
+      check('斜杠格式非法', Calc.isValidDateString('2026/02/28'), false);
+      check('空值非法', Calc.isValidDateString(''), false);
+
+      /* ---------- 本月汇总 ---------- */
+      var sample = [
+        { id: 'a', student: '小明', date: '2026-11-01', duration: 90, rate: 120, createdAt: 1 },
+        { id: 'b', student: '小红', date: '2026-11-03', duration: 60, rate: 100, createdAt: 2 },
+        { id: 'c', student: '小刚', date: '2026-10-20', duration: 120, rate: 150, createdAt: 3 }
+      ];
+      var month = Calc.summarize(sample, '2026-11');
+
+      check('本月课程次数为 2', month.count, 2);
+      check('本月总时长为 150 分钟', month.totalMinutes, 150);
+      check('本月收入为 280', month.totalIncome, 280);
+      check('本月时长文本', month.durationText, '2 小时 30 分钟');
+      check(
+        '空数据汇总不报错',
+        Calc.summarize([], '2026-11'),
+        { count: 0, totalMinutes: 0, totalIncome: 0, durationText: '0 分钟' }
+      );
+      check('非本月数据不计入', Calc.summarize(sample, '2026-09').count, 0);
+
+      /* ---------- 全年汇总 ---------- */
+      check('年份键取前 4 位', Calc.yearKey('2026-11-03'), '2026');
+      check('年份标签', Calc.yearLabel('2026'), '2026 年');
+      check('当前年份格式正确', /^\d{4}$/.test(Calc.currentYearKey()), true);
+
+      var year = Calc.summarizeYear(sample, '2026');
+      check('全年课程次数为 3', year.count, 3);
+      check('全年总时长为 270 分钟', year.totalMinutes, 270);
+      check('全年收入为 580', year.totalIncome, 580);
+      check('上一年数据不计入', Calc.summarizeYear(sample, '2025').count, 0);
+
+      /* ---------- 收款状态与应收 / 已收 / 待收 ---------- */
+      check('没有 paid 字段视为待收款', Calc.isPaid({}), false);
+      check('paid 为 true 是已收款', Calc.isPaid({ paid: true }), true);
+      check('paid 为 false 是待收款', Calc.isPaid({ paid: false }), false);
+
+      var paymentSample = [
+        { id: 'p1', date: '2026-11-01', duration: 90, rate: 120, paid: true },
+        { id: 'p2', date: '2026-11-03', duration: 60, rate: 100, paid: false },
+        { id: 'p3', date: '2026-11-05', duration: 45, rate: 130 },
+        { id: 'p4', date: '2026-10-20', duration: 120, rate: 150, paid: true },
+        { id: 'p5', date: '2025-12-31', duration: 30, rate: 200, paid: true }
+      ];
+
+      var monthPay = Calc.summarizeMonthPayments(paymentSample, '2026-11');
+      check('本月应收 = 已收 + 待收', monthPay.totalIncome, 377.5);
+      check('本月已收', monthPay.paidIncome, 180);
+      check('本月待收', monthPay.unpaidIncome, 197.5);
+      check('本月已收节数', monthPay.paidCount, 1);
+      check('本月待收节数', monthPay.unpaidCount, 2);
+
+      var yearPay = Calc.summarizeYearPayments(paymentSample, '2026');
+      check('全年应收', yearPay.totalIncome, 677.5);
+      check('全年已收', yearPay.paidIncome, 480);
+      check('全年待收', yearPay.unpaidIncome, 197.5);
+      check('上一年收款不计入本年', yearPay.paidCount, 2);
+
+      /* ---------- 学生姓名解析 ---------- */
+      check(
+        '学生存在时显示最新昵称',
+        Calc.resolveStudentName(
+          { studentId: 's1', student: '旧昵称' },
+          { s1: { id: 's1', name: '新昵称' } }
+        ),
+        '新昵称'
+      );
+      check(
+        '学生删除后使用课程里的昵称快照',
+        Calc.resolveStudentName({ studentId: 's1', student: '小明' }, {}),
+        '小明'
+      );
+      check(
+        '没有 studentId 时使用昵称快照',
+        Calc.resolveStudentName({ student: '小红' }, {}),
+        '小红'
+      );
+
+      /* ---------- 排序 ---------- */
+      check(
+        '按日期从新到旧',
+        Calc.sortLessons(sample).map(function (lesson) { return lesson.date; }),
+        ['2026-11-03', '2026-11-01', '2026-10-20']
+      );
+      check(
+        '同一天按创建时间倒序',
+        Calc.sortLessons([
+          { date: '2026-11-03', createdAt: 1 },
+          { date: '2026-11-03', createdAt: 2 }
+        ]).map(function (lesson) { return lesson.createdAt; }),
+        [2, 1]
+      );
+
+      /* ---------- 日历辅助 ---------- */
+      check(
+        '筛选某一天的课程',
+        Calc.lessonsOnDate(sample, '2026-11-01').map(function (lesson) { return lesson.id; }),
+        ['a']
+      );
+      check('2026 年 2 月有 28 天', Calc.daysInMonth(2026, 2), 28);
+      check('2024 年 2 月有 29 天', Calc.daysInMonth(2024, 2), 29);
+
+      var cells = Calc.buildMonthCells(2026, 11);
+      check('月历固定 42 格', cells.length, 42);
+      check('月历从周一开始', cells[0].date, '2026-10-26');
+      check('2026-11-01 是周日', cells[6].date, '2026-11-01');
+      check('月初属于本月', cells[6].inMonth, true);
+      check('月历最后一格', cells[41].date, '2026-12-06');
+      check('跨年上个月', Calc.shiftMonthKey('2026-01', -1), '2025-12');
+      check('跨年下个月', Calc.shiftMonthKey('2026-12', 1), '2027-01');
+      check('星期标签', Calc.weekdayLabel('2026-11-03'), '周二');
+
+      /* ---------- 月度收入趋势 ---------- */
+      var trend = Calc.monthlyRevenue(paymentSample, '2026');
+      check('趋势图固定 12 个月', trend.length, 12);
+      check('没有课程的月份为 0', trend[0].totalIncome, 0);
+      check('10 月收入', trend[9].totalIncome, 300);
+      check('11 月收入', trend[10].totalIncome, 377.5);
+      check('11 月已收', trend[10].paidIncome, 180);
+      check('11 月待收', trend[10].unpaidIncome, 197.5);
+      check('趋势月份标签', trend[10].label, '11 月');
+
+      /* ---------- 学生收入排行 ---------- */
+      var studentLessons = [
+        { id: 'x1', studentId: 's1', student: '小明', date: '2026-11-01', duration: 60, rate: 100, paid: true },
+        { id: 'x2', studentId: 's1', student: '小明', date: '2026-11-02', duration: 30, rate: 100, paid: false },
+        { id: 'x3', studentId: 's2', student: '小红', date: '2026-11-03', duration: 90, rate: 120, paid: true },
+        { id: 'x4', studentId: 's2', student: '小红', date: '2026-11-04', duration: 60, rate: 120, paid: true },
+        { id: 'x5', studentId: 'gone', student: '已删除学生', date: '2026-10-05', duration: 60, rate: 200, paid: true }
+      ];
+      var studentsById = { s1: { id: 's1', name: '小明A' }, s2: { id: 's2', name: '小红' } };
+
+      var monthRank = Calc.summarizeStudentsMonth(studentLessons, '2026-11', studentsById);
+      check('月度排行按收入从高到低', monthRank.map(function (row) { return row.name; }), ['小红', '小明A']);
+      check('月度排行收入', monthRank.map(function (row) { return row.totalIncome; }), [300, 150]);
+
+      var yearRank = Calc.summarizeStudentsYear(studentLessons, '2026', studentsById);
+      check('年度排行保留已删除学生', yearRank.map(function (row) { return row.name; }), ['小红', '已删除学生', '小明A']);
+      check('已删除学生收入不丢失', yearRank[1].totalIncome, 200);
+      check('课程记录年份从新到旧', Calc.yearsWithLessons(paymentSample), ['2026', '2025']);
+
+      /* ---------- 渲染结果 ---------- */
+      var passed = results.filter(function (r) { return r.pass; }).length;
+      var failed = results.length - passed;
+
+      var summary = document.getElementById('summary');
+      summary.className = 'summary ' + (failed === 0 ? 'ok' : 'bad');
+      summary.textContent = failed === 0
+        ? '全部通过：' + passed + ' 项测试'
+        : '有 ' + failed + ' 项失败，共 ' + results.length + ' 项测试';
+
+      var list = document.getElementById('results');
+      results.forEach(function (result) {
+        var item = document.createElement('li');
+        var tag = document.createElement('span');
+        tag.className = 'tag ' + (result.pass ? 'pass' : 'fail');
+        tag.textContent = result.pass ? '通过' : '失败';
+
+        var name = document.createElement('span');
+        name.className = 'name';
+        name.textContent = result.name;
+
+        item.appendChild(tag);
+        item.appendChild(name);
+
+        if (!result.pass) {
+          var detail = document.createElement('span');
+          detail.className = 'detail';
+          detail.textContent = '实际：' + show(result.actual) + '　期望：' + show(result.expected);
+          item.appendChild(detail);
+        }
+
+        list.appendChild(item);
+      });
+    })();
+  </script>
+</body>
+</html>
