@@ -6,7 +6,18 @@
 (function (global) {
   'use strict';
 
-  /** 把任意输入安全地转成数字，失败时返回 0 */
+  /** 存储层允许的最大时薪：1,000,000 元（防止异常数据溢出） */
+  var MAX_RATE_CENTS = 100000000;
+  /** 表单允许输入的最大时薪：10,000 元，与原有产品规则一致 */
+  var MAX_INPUT_CENTS = 1000000;
+
+  function isIntegerAmount(value) {
+    return typeof value === 'number' &&
+      Number.isFinite(value) &&
+      Math.floor(value) === value;
+  }
+
+  /** 把任意非金额输入安全地转成数字，失败时返回 0 */
   function toNumber(value) {
     if (typeof value === 'number') {
       return Number.isFinite(value) ? value : 0;
@@ -15,18 +26,245 @@
     return Number.isFinite(parsed) ? parsed : 0;
   }
 
-  /** 金额四舍五入到分，避免出现 97.50000000000001 */
-  function roundMoney(value) {
-    return Math.round(toNumber(value) * 100) / 100;
+  /**
+   * 把 "12.50" 这样的十进制金额字符串转成整数分。
+   * 这里只处理字符串，避免 1.005 * 100 这类浮点误差。
+   * 超过两位的小数按「四舍五入到分」处理。
+   */
+  function decimalTextToCents(text) {
+    var normalized = text.charAt(0) === '.' ? '0' + text : text;
+    var parts = normalized.split('.');
+    var whole = Number(parts[0]);
+    if (!Number.isFinite(whole)) return null;
+
+    var fraction = parts[1] || '';
+    var cents = whole * 100 + Number((fraction + '00').slice(0, 2));
+    var rest = fraction.slice(2);
+    // 第三位小数 >= 5 时进一分；后面的位数不再参与，避免浮点误差
+    if (rest && rest.charCodeAt(0) >= 53) cents += 1;
+    return cents;
   }
 
-  /** 一节课的收入：时长(分钟) / 60 × 每小时课时费 */
-  function lessonIncome(lesson) {
+  /**
+   * 解析用户输入的人民币元（严格模式）：最多两位小数，不允许负数。
+   * 返回 { ok, cents } 或 { ok:false, reason:'empty'|'format'|'decimals'|'range' }
+   * options.maxCents 可覆盖默认表单上限，仅用于与历史金额做等值比较。
+   */
+  function parseYuanInput(value, options) {
+    if (value === null || value === undefined) {
+      return { ok: false, reason: 'empty' };
+    }
+
+    var maxCents = options && Number.isSafeInteger(options.maxCents)
+      ? options.maxCents
+      : MAX_INPUT_CENTS;
+    var text = typeof value === 'number' ? String(value) : String(value).trim();
+    if (text === '') return { ok: false, reason: 'empty' };
+
+    // 负数仍属于金额范围问题，给出与旧版一致的“范围”提示
+    if (/^-\d+(?:\.\d*)?$/.test(text) || /^-\.\d+$/.test(text)) {
+      return { ok: false, reason: 'range' };
+    }
+
+    if (!/^(?:\d+(?:\.\d*)?|\.\d+)$/.test(text)) {
+      return { ok: false, reason: 'format' };
+    }
+    if (/\.\d{3,}$/.test(text)) {
+      return { ok: false, reason: 'decimals' };
+    }
+
+    var cents = decimalTextToCents(text);
+    if (cents === null || !Number.isFinite(cents)) {
+      return { ok: false, reason: 'format' };
+    }
+    if (!Number.isSafeInteger(cents) || cents > maxCents) {
+      return { ok: false, reason: 'range' };
+    }
+    return { ok: true, cents: cents };
+  }
+
+  /** 用户输入元 → 整数分；非法输入返回 null */
+  function yuanToCents(value) {
+    var parsed = parseYuanInput(value);
+    return parsed.ok ? parsed.cents : null;
+  }
+
+  /**
+   * 旧数据/旧备份里的元金额 → 整数分。
+   * 旧数据可能带两位以上小数，这里统一四舍五入到分。
+   */
+  function legacyYuanToCents(value) {
+    var text;
+    if (typeof value === 'number') {
+      if (!Number.isFinite(value) || value < 0) return null;
+      text = String(value);
+      // 极小数字会变成 1e-7 这种形式，四舍五入到分后是 0
+      if (!/^(?:\d+(?:\.\d*)?|\.\d+)$/.test(text)) {
+        var rounded = Math.round(value * 100);
+        return Number.isSafeInteger(rounded) && rounded >= 0 ? rounded : null;
+      }
+    } else if (typeof value === 'string') {
+      text = value.trim();
+      if (!/^(?:\d+(?:\.\d*)?|\.\d+)$/.test(text)) return null;
+    } else {
+      return null;
+    }
+
+    var cents = decimalTextToCents(text);
+    return Number.isSafeInteger(cents) && cents >= 0 ? cents : null;
+  }
+
+  /** 整数分 → 表单输入框里的元字符串（去掉多余的 0，最多两位小数） */
+  function centsToYuanInput(cents) {
+    var value = Number(cents);
+    if (!isIntegerAmount(value) || value < 0) return '';
+    var whole = Math.floor(value / 100);
+    var fraction = value % 100;
+    if (fraction === 0) return String(whole);
+    return whole + '.' + String(fraction).padStart(2, '0').replace(/0$/, '');
+  }
+
+  /** 整数分 → 固定两位小数的元字符串（用于 CSV 等纯文本输出） */
+  function centsToYuanFixed(cents) {
+    var value = Number(cents);
+    if (!Number.isFinite(value)) value = 0;
+    value = Math.round(value);
+    var negative = value < 0;
+    value = Math.abs(value);
+    var whole = Math.floor(value / 100);
+    var fraction = value % 100;
+    return (negative ? '-' : '') + whole + '.' + String(fraction).padStart(2, '0');
+  }
+
+  /**
+   * 一节课费用（整数分）的严格计算。
+   * 使用整数余数完成四舍五入：fee = floor(n/60) + (n%60 >= 30 ? 1 : 0)。
+   * 不使用浮点除法，也不依赖 Math.round(rate * duration / 60)。
+   */
+  function calculateLessonFeeCents(hourlyRateCents, durationMinutes) {
+    if (!isIntegerAmount(hourlyRateCents) || hourlyRateCents < 0) {
+      return { ok: false, code: 'INVALID_RATE', cents: null };
+    }
+    if (!isIntegerAmount(durationMinutes) || durationMinutes <= 0) {
+      return { ok: false, code: 'INVALID_DURATION', cents: null };
+    }
+
+    var numerator = hourlyRateCents * durationMinutes;
+    if (!Number.isSafeInteger(numerator)) {
+      return { ok: false, code: 'FEE_OVERFLOW', cents: null };
+    }
+
+    // 对安全整数取余是精确的；先减去余数再除以 60，得到精确的整数商。
+    var remainder = numerator % 60;
+    var whole = (numerator - remainder) / 60;
+    var feeCents = whole + (remainder >= 30 ? 1 : 0);
+
+    if (!Number.isSafeInteger(feeCents) || feeCents < 0) {
+      return { ok: false, code: 'FEE_OVERFLOW', cents: null };
+    }
+    return { ok: true, cents: feeCents, code: null };
+  }
+
+  /**
+   * 一节课的费用（整数分）。
+   * 供展示和汇总使用；非法输入返回 0，保证旧调用方不会得到 NaN。
+   * 需要拒绝非法输入的写入路径应使用 calculateLessonFeeCents()。
+   */
+  function lessonFeeCentsFromRate(hourlyRateCents, durationMinutes) {
+    var result = calculateLessonFeeCents(hourlyRateCents, durationMinutes);
+    return result.ok ? result.cents : 0;
+  }
+
+  /** 读取一节课的整数分费用；旧记录缺少 feeCents 时按当前规则补算 */
+  function lessonFeeCents(lesson) {
     if (!lesson) return 0;
-    var duration = toNumber(lesson.duration);
-    var rate = toNumber(lesson.rate);
-    if (duration <= 0 || rate <= 0) return 0;
-    return roundMoney((duration / 60) * rate);
+    if (isIntegerAmount(lesson.feeCents) && lesson.feeCents >= 0) {
+      return lesson.feeCents;
+    }
+    return lessonFeeCentsFromRate(lesson.hourlyRateCents, lesson.duration);
+  }
+
+  /**
+   * 把非负十进制金额文本解析成精确分数：numerator / scale。
+   * 支持普通小数、".5"、数字转字符串后的科学计数法（例如 1e-7）。
+   * 解析失败或规模异常时返回 null，避免构造超大 BigInt。
+   */
+  function decimalToFraction(value) {
+    if (typeof BigInt !== 'function') return null;
+
+    var text;
+    if (typeof value === 'number') {
+      if (!Number.isFinite(value) || value < 0) return null;
+      text = String(value);
+    } else if (typeof value === 'string') {
+      text = value.trim();
+    } else {
+      return null;
+    }
+
+    var match = /^(\d*)(?:\.(\d*))?(?:[eE]([+-]?\d+))?$/.exec(text);
+    if (!match) return null;
+
+    var whole = match[1] || '';
+    var fraction = match[2] || '';
+    if (!whole && !fraction) return null;
+
+    var exponent = match[3] ? Number(match[3]) : 0;
+    if (!Number.isSafeInteger(exponent) || Math.abs(exponent) > 30) return null;
+
+    var digits = (whole + fraction).replace(/^0+(?=\d)/, '') || '0';
+    if (digits.length > 30) return null;
+
+    var numerator = BigInt(digits);
+    var scaleExp = fraction.length - exponent;
+    var scale = BigInt(1);
+    if (scaleExp > 0) {
+      if (scaleExp > 30) return null;
+      scale = BigInt(10) ** BigInt(scaleExp);
+    } else if (scaleExp < 0) {
+      if (-scaleExp > 30) return null;
+      numerator *= BigInt(10) ** BigInt(-scaleExp);
+    }
+
+    return { numerator: numerator, scale: scale };
+  }
+
+  /**
+   * 旧版课程费用的严格计算：round(元时薪 × 分钟 × 100 / 60)。
+   * 先把旧时薪解析为精确十进制分数，再全程使用 BigInt 整数比例运算，
+   * 不会先把旧时薪四舍五入成整数分，因此能保留超过两位小数的历史费用。
+   */
+  function calculateLegacyLessonFeeCents(hourlyRateYuan, durationMinutes) {
+    var fraction = decimalToFraction(hourlyRateYuan);
+    if (!fraction) {
+      return { ok: false, code: 'INVALID_LEGACY_RATE', cents: null };
+    }
+    if (!isIntegerAmount(durationMinutes) || durationMinutes <= 0) {
+      return { ok: false, code: 'INVALID_DURATION', cents: null };
+    }
+    if (fraction.numerator > fraction.scale * BigInt(MAX_RATE_CENTS / 100)) {
+      return { ok: false, code: 'INVALID_LEGACY_RATE', cents: null };
+    }
+
+    var numerator = fraction.numerator * BigInt(durationMinutes) * BigInt(100);
+    var denominator = fraction.scale * BigInt(60);
+    var whole = numerator / denominator;
+    var remainder = numerator % denominator;
+    if (remainder * BigInt(2) >= denominator) whole += BigInt(1);
+
+    if (whole < BigInt(0) || whole > BigInt(Number.MAX_SAFE_INTEGER)) {
+      return { ok: false, code: 'FEE_OVERFLOW', cents: null };
+    }
+    return { ok: true, cents: Number(whole), code: null };
+  }
+
+  /**
+   * 旧版公式的兼容包装：非法输入或超出安全范围时返回 0。
+   * 迁移、备份导入等写入路径必须使用 calculateLegacyLessonFeeCents() 的严格结果。
+   */
+  function legacyLessonFeeCents(hourlyRateYuan, durationMinutes) {
+    var result = calculateLegacyLessonFeeCents(hourlyRateYuan, durationMinutes);
+    return result.ok ? result.cents : 0;
   }
 
   /** 是否已收款；旧数据没有 paid 字段时视为待收款 */
@@ -34,9 +272,9 @@
     return Boolean(lesson) && lesson.paid === true;
   }
 
-  /** 1860 → "1,860.00"（按当前语言格式化） */
-  function formatMoney(value) {
-    return global.I18N.formatMoney(roundMoney(value));
+  /** 整数分 → "1,860.00"（按当前语言格式化，仅用于展示） */
+  function formatCents(cents) {
+    return global.I18N.formatCents(cents);
   }
 
   /** 150 → "2 小时 30 分钟"（按当前语言格式化） */
@@ -115,7 +353,7 @@
 
   /**
    * 通用汇总：按 predicate 过滤后统计
-   * 返回 { count, totalMinutes, totalIncome, durationText }
+   * 返回 { count, totalMinutes, totalCents, durationText }
    */
   function summarizeBy(lessons, predicate) {
     var list = Array.isArray(lessons) ? lessons : [];
@@ -128,14 +366,14 @@
       if (!predicate(lesson)) continue;
       count += 1;
       minutes += Math.max(0, Math.round(toNumber(lesson.duration)));
-      // 以“分”累加，避免浮点误差越加越大
-      cents += Math.round(lessonIncome(lesson) * 100);
+      // 每节课的费用已经是最接近的整数分，这里只做整数求和
+      cents += lessonFeeCents(lesson);
     }
 
     return {
       count: count,
       totalMinutes: minutes,
-      totalIncome: cents / 100,
+      totalCents: cents,
       durationText: minutesToText(minutes)
     };
   }
@@ -155,9 +393,9 @@
   }
 
   /**
-   * 按收款状态拆分收入
-   * 返回 { totalIncome, paidIncome, unpaidIncome, paidCount, unpaidCount }
-   * totalIncome 是应收总额，paidIncome 是实际已收，unpaidIncome 是待收
+   * 按收款状态拆分收入（全部为整数分）
+   * 返回 { totalCents, paidCents, unpaidCents, paidCount, unpaidCount }
+   * totalCents 是应收总额，paidCents 是实际已收，unpaidCents 是待收
    */
   function summarizePaymentsBy(lessons, predicate) {
     var list = Array.isArray(lessons) ? lessons : [];
@@ -170,8 +408,7 @@
       var lesson = list[i];
       if (!predicate(lesson)) continue;
 
-      // 同样以“分”累加，避免浮点误差
-      var cents = Math.round(lessonIncome(lesson) * 100);
+      var cents = lessonFeeCents(lesson);
       if (isPaid(lesson)) {
         paidCents += cents;
         paidCount += 1;
@@ -182,9 +419,9 @@
     }
 
     return {
-      totalIncome: (paidCents + unpaidCents) / 100,
-      paidIncome: paidCents / 100,
-      unpaidIncome: unpaidCents / 100,
+      totalCents: paidCents + unpaidCents,
+      paidCents: paidCents,
+      unpaidCents: unpaidCents,
       paidCount: paidCount,
       unpaidCount: unpaidCount
     };
@@ -230,6 +467,51 @@
     var list = Array.isArray(lessons) ? lessons : [];
     return list.filter(function (lesson) {
       return lesson && lesson.date === date;
+    });
+  }
+
+  /**
+   * 按月份、学生姓名、科目和收款状态筛选课程。
+   * 科目来自学生当前档案；已删除学生没有科目，因此不会被科目筛选命中。
+   */
+  function filterLessons(lessons, options) {
+    var list = Array.isArray(lessons) ? lessons : [];
+    var opts = options || {};
+    var targetMonth = typeof opts.monthKey === 'string' ? opts.monthKey : '';
+    var nameQuery = typeof opts.studentName === 'string'
+      ? opts.studentName.trim().toLowerCase()
+      : '';
+    var subjectQuery = typeof opts.subject === 'string'
+      ? opts.subject.trim().toLowerCase()
+      : '';
+    var status = opts.status === 'paid' || opts.status === 'unpaid'
+      ? opts.status
+      : 'all';
+    var studentsById = opts.studentsById || {};
+
+    return list.filter(function (lesson) {
+      if (!lesson) return false;
+      if (targetMonth && monthKey(lesson.date) !== targetMonth) return false;
+
+      var name = resolveStudentName(lesson, studentsById) || '';
+      if (nameQuery && name.toLowerCase().indexOf(nameQuery) === -1) return false;
+
+      var student = lesson.studentId ? studentsById[lesson.studentId] : null;
+      var subject = student && student.subject ? student.subject : '';
+      if (subjectQuery && subject.toLowerCase().indexOf(subjectQuery) === -1) {
+        return false;
+      }
+
+      if (status === 'paid' && !isPaid(lesson)) return false;
+      if (status === 'unpaid' && isPaid(lesson)) return false;
+      return true;
+    });
+  }
+
+  /** 汇总任意一组课程，用于筛选结果合计 */
+  function summarizeList(lessons) {
+    return summarizeBy(lessons, function () {
+      return true;
     });
   }
 
@@ -291,7 +573,8 @@
 
   /**
    * 某一年 12 个月的收入趋势（没有课程的月份也返回 0）
-   * 返回 [{ month, key, label, count, totalIncome, paidIncome, unpaidIncome }]
+   * 金额字段均为整数分
+   * 返回 [{ month, key, label, count, totalCents, paidCents, unpaidCents }]
    */
   function monthlyRevenue(lessons, key) {
     var year = typeof key === 'string' ? key : String(key);
@@ -317,7 +600,7 @@
       var index = month - 1;
       if (index < 0 || index > 11) continue;
 
-      var cents = Math.round(lessonIncome(lesson) * 100);
+      var cents = lessonFeeCents(lesson);
       counts[index] += 1;
       totalCents[index] += cents;
       if (isPaid(lesson)) {
@@ -334,9 +617,9 @@
         key: year + '-' + pad2(i + 1),
         label: global.I18N.monthName(i + 1, 'short'),
         count: counts[i],
-        totalIncome: totalCents[i] / 100,
-        paidIncome: paidCents[i] / 100,
-        unpaidIncome: unpaidCents[i] / 100
+        totalCents: totalCents[i],
+        paidCents: paidCents[i],
+        unpaidCents: unpaidCents[i]
       });
     }
 
@@ -376,7 +659,7 @@
 
       map[groupKey].name = name;
       map[groupKey].count += 1;
-      map[groupKey].cents += Math.round(lessonIncome(lesson) * 100);
+      map[groupKey].cents += lessonFeeCents(lesson);
     }
 
     var rows = order.map(function (groupKey) {
@@ -386,12 +669,12 @@
         studentId: row.studentId,
         name: row.name,
         count: row.count,
-        totalIncome: row.cents / 100
+        totalCents: row.cents
       };
     });
 
     rows.sort(function (a, b) {
-      if (b.totalIncome !== a.totalIncome) return b.totalIncome - a.totalIncome;
+      if (b.totalCents !== a.totalCents) return b.totalCents - a.totalCents;
       return a.name.localeCompare(b.name, global.I18N.getLocale());
     });
 
@@ -431,11 +714,22 @@
   }
 
   global.Calc = {
+    MAX_RATE_CENTS: MAX_RATE_CENTS,
+    MAX_INPUT_CENTS: MAX_INPUT_CENTS,
     toNumber: toNumber,
-    roundMoney: roundMoney,
-    lessonIncome: lessonIncome,
+    parseYuanInput: parseYuanInput,
+    yuanToCents: yuanToCents,
+    legacyYuanToCents: legacyYuanToCents,
+    centsToYuanInput: centsToYuanInput,
+    centsToYuanFixed: centsToYuanFixed,
+    calculateLessonFeeCents: calculateLessonFeeCents,
+    lessonFeeCentsFromRate: lessonFeeCentsFromRate,
+    lessonFeeCents: lessonFeeCents,
+    calculateLegacyLessonFeeCents: calculateLegacyLessonFeeCents,
+    legacyLessonFeeCents: legacyLessonFeeCents,
+    isIntegerAmount: isIntegerAmount,
     isPaid: isPaid,
-    formatMoney: formatMoney,
+    formatCents: formatCents,
     minutesToText: minutesToText,
     monthKey: monthKey,
     toDateString: toDateString,
@@ -454,6 +748,8 @@
     resolveStudentName: resolveStudentName,
     sortLessons: sortLessons,
     lessonsOnDate: lessonsOnDate,
+    filterLessons: filterLessons,
+    summarizeList: summarizeList,
     daysInMonth: daysInMonth,
     buildMonthCells: buildMonthCells,
     shiftMonthKey: shiftMonthKey,

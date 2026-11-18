@@ -65,7 +65,7 @@
     <h1>Calc 计算逻辑自测</h1>
     <p class="sub">
       这个页面加载 <code>js/i18n.js</code> 和 <code>js/calc.js</code>，不依赖存储和界面。
-      双击打开即可运行，绿色代表通过，红色代表失败。
+      内部金额统一使用整数分；输入和展示使用元。双击打开即可运行。
     </p>
     <div class="summary" id="summary">运行中…</div>
     <ol id="results"></ol>
@@ -89,17 +89,157 @@
         return JSON.stringify(value);
       }
 
-      /* ---------- 收入计算 ---------- */
-      check('90 分钟 × 120 元/小时 = 180', Calc.lessonIncome({ duration: 90, rate: 120 }), 180);
-      check('45 分钟 × 130 元/小时 = 97.5', Calc.lessonIncome({ duration: 45, rate: 130 }), 97.5);
-      check('60 分钟 × 100 元/小时 = 100', Calc.lessonIncome({ duration: 60, rate: 100 }), 100);
-      check('时长 0 时收入为 0', Calc.lessonIncome({ duration: 0, rate: 100 }), 0);
-      check('缺少数据时收入为 0', Calc.lessonIncome(null), 0);
+      /* ---------- 元 → 整数分 ---------- */
+      check('0 元 → 0 分', Calc.yuanToCents(0), 0);
+      check('1 元 → 100 分', Calc.yuanToCents(1), 100);
+      check('12.50 元 → 1250 分', Calc.yuanToCents(12.5), 1250);
+      check('99.99 元 → 9999 分', Calc.yuanToCents(99.99), 9999);
+      check('0.01 元 → 1 分', Calc.yuanToCents(0.01), 1);
+      check('0.1 元 → 10 分', Calc.yuanToCents(0.1), 10);
+      check('".5" → 50 分', Calc.yuanToCents('.5'), 50);
+      check('"12.50" → 1250 分', Calc.yuanToCents('12.50'), 1250);
+      check('"0012.30" → 1230 分', Calc.yuanToCents('0012.30'), 1230);
+      check('"120" → 12000 分', Calc.yuanToCents('120'), 12000);
+      check('非数字字符串返回 null', Calc.yuanToCents('abc'), null);
+      check('空字符串返回 null', Calc.yuanToCents(''), null);
+      check('纯空格返回 null', Calc.yuanToCents('  '), null);
+      check('负数字符串返回 null', Calc.yuanToCents('-1'), null);
+      check('科学计数法返回 null', Calc.yuanToCents('1e3'), null);
+      check('千分位返回 null', Calc.yuanToCents('1,000'), null);
+      check('超过两位小数返回 null', Calc.yuanToCents('12.345'), null);
+      check('超过输入上限返回 null', Calc.yuanToCents('10000.01'), null);
+      check('输入上限 10000 元可接受', Calc.yuanToCents('10000'), 1000000);
+      check(
+        '历史等值比较允许超过表单上限',
+        Calc.parseYuanInput('20000.00', { maxCents: Number.MAX_SAFE_INTEGER }),
+        { ok: true, cents: 2000000 }
+      );
+      check(
+        '历史等值比较仍区分不同金额',
+        Calc.parseYuanInput('20000.01', { maxCents: Number.MAX_SAFE_INTEGER }),
+        { ok: true, cents: 2000001 }
+      );
+      check('默认表单上限仍然生效', Calc.parseYuanInput('20000.00'), {
+        ok: false, reason: 'range'
+      });
 
-      /* ---------- 金额格式化 ---------- */
-      check('1860 显示为 1,860.00', Calc.formatMoney(1860), '1,860.00');
-      check('97.5 显示为 97.50', Calc.formatMoney(97.5), '97.50');
-      check('0 显示为 0.00', Calc.formatMoney(0), '0.00');
+      check('空输入原因 empty', Calc.parseYuanInput('').reason, 'empty');
+      check('格式错误原因 format', Calc.parseYuanInput('abc').reason, 'format');
+      check('负数原因 range', Calc.parseYuanInput('-1').reason, 'range');
+      check('三位小数原因 decimals', Calc.parseYuanInput('12.345').reason, 'decimals');
+      check('超范围原因 range', Calc.parseYuanInput('10000.01').reason, 'range');
+
+      /* ---------- 旧数据元金额（允许超过两位小数） ---------- */
+      check('旧数据 1.005 元四舍五入到 101 分', Calc.legacyYuanToCents(1.005), 101);
+      check('旧数据 0.1 + 0.2 浮点结果为 30 分', Calc.legacyYuanToCents(0.1 + 0.2), 30);
+      check('旧数据 1.999 元四舍五入到 200 分', Calc.legacyYuanToCents(1.999), 200);
+      check('旧数据 "12.345" 元四舍五入到 1235 分', Calc.legacyYuanToCents('12.345'), 1235);
+      check('旧数据负数返回 null', Calc.legacyYuanToCents(-1), null);
+      check('旧数据 Infinity 返回 null', Calc.legacyYuanToCents(Infinity), null);
+      check('旧数据超出安全整数返回 null', Calc.legacyYuanToCents(99999999999999), null);
+
+      /* ---------- 整数分 → 元字符串 ---------- */
+      check('0 分输入框显示 0', Calc.centsToYuanInput(0), '0');
+      check('1 分输入框显示 0.01', Calc.centsToYuanInput(1), '0.01');
+      check('10 分输入框显示 0.1', Calc.centsToYuanInput(10), '0.1');
+      check('1250 分输入框显示 12.5', Calc.centsToYuanInput(1250), '12.5');
+      check('9999 分输入框显示 99.99', Calc.centsToYuanInput(9999), '99.99');
+      check('12000 分输入框显示 120', Calc.centsToYuanInput(12000), '120');
+      check('12050 分输入框显示 120.5', Calc.centsToYuanInput(12050), '120.5');
+      check('非整数分不能填入输入框', Calc.centsToYuanInput(12.5), '');
+
+      check('0 分固定两位小数 0.00', Calc.centsToYuanFixed(0), '0.00');
+      check('1 分固定两位小数 0.01', Calc.centsToYuanFixed(1), '0.01');
+      check('1250 分固定两位小数 12.50', Calc.centsToYuanFixed(1250), '12.50');
+      check('9999 分固定两位小数 99.99', Calc.centsToYuanFixed(9999), '99.99');
+      check('12000 分固定两位小数 120.00', Calc.centsToYuanFixed(12000), '120.00');
+
+      /* ---------- 金额格式化（仅展示） ---------- */
+      check('186000 分显示为 1,860.00', I18N.formatCents(186000), '1,860.00');
+      check('9750 分显示为 97.50', I18N.formatCents(9750), '97.50');
+      check('1 分显示为 0.01', I18N.formatCents(1), '0.01');
+      check('0 分显示为 0.00', I18N.formatCents(0), '0.00');
+      check('带货币符号 186000 分', I18N.formatCurrencyCents(186000), '¥1,860.00');
+      check('图表短金额 1200000 分 = 1.2万', I18N.formatCompactCurrencyCents(1200000), '¥1.2万');
+
+      /* ---------- 单节课费用 ---------- */
+      check('90 分钟 × 120 元/小时 = 18000 分', Calc.lessonFeeCentsFromRate(12000, 90), 18000);
+      check('45 分钟 × 130 元/小时 = 9750 分', Calc.lessonFeeCentsFromRate(13000, 45), 9750);
+      check('60 分钟 × 100 元/小时 = 10000 分', Calc.lessonFeeCentsFromRate(10000, 60), 10000);
+      check('30 分钟 × 120 元/小时 = 6000 分', Calc.lessonFeeCentsFromRate(12000, 30), 6000);
+      check('20 分钟 × 100 元/小时 = 3333 分（舍入）', Calc.lessonFeeCentsFromRate(10000, 20), 3333);
+      check('1 分钟 × 1 元/小时 = 2 分（舍入）', Calc.lessonFeeCentsFromRate(100, 1), 2);
+      check('1 分钟 × 0.01 元/小时 = 0 分（不足一分）', Calc.lessonFeeCentsFromRate(1, 1), 0);
+      check('时长 0 时费用为 0', Calc.lessonFeeCentsFromRate(12000, 0), 0);
+      check('缺少数据时费用为 0', Calc.lessonFeeCents(null), 0);
+      check('优先使用已保存的 feeCents', Calc.lessonFeeCents({
+        feeCents: 9999, hourlyRateCents: 15000, duration: 90
+      }), 9999);
+      check('缺少 feeCents 时按规则补算', Calc.lessonFeeCents({
+        hourlyRateCents: 15000, duration: 90
+      }), 22500);
+      check('旧公式 45 分钟 × 130 元 = 9750 分', Calc.legacyLessonFeeCents(130, 45), 9750);
+      check('旧公式 1 分钟 × 1 元 = 2 分', Calc.legacyLessonFeeCents(1, 1), 2);
+
+      /* ---------- 严格整数费用计算 ---------- */
+      check('严格计算 45 分钟 × 130 元 = 9750 分', Calc.calculateLessonFeeCents(13000, 45), {
+        ok: true, cents: 9750, code: null
+      });
+      check('严格计算 20 分钟 × 100 元 = 3333 分', Calc.calculateLessonFeeCents(10000, 20), {
+        ok: true, cents: 3333, code: null
+      });
+      check('严格计算 1 分钟 × 1 元 = 2 分', Calc.calculateLessonFeeCents(100, 1), {
+        ok: true, cents: 2, code: null
+      });
+      check('严格计算 1 分钟 × 0.01 元 = 0 分', Calc.calculateLessonFeeCents(1, 1), {
+        ok: true, cents: 0, code: null
+      });
+      check('恰好半分 1 分 × 30 分钟 = 1 分', Calc.calculateLessonFeeCents(1, 30), {
+        ok: true, cents: 1, code: null
+      });
+      check('1.5 分 1 分 × 90 分钟 = 2 分', Calc.calculateLessonFeeCents(1, 90), {
+        ok: true, cents: 2, code: null
+      });
+      check('1.5 分 2 分 × 45 分钟 = 2 分', Calc.calculateLessonFeeCents(2, 45), {
+        ok: true, cents: 2, code: null
+      });
+      check('非法时薪被拒绝', Calc.calculateLessonFeeCents(-1, 60), {
+        ok: false, code: 'INVALID_RATE', cents: null
+      });
+      check('非法时长被拒绝', Calc.calculateLessonFeeCents(10000, 0), {
+        ok: false, code: 'INVALID_DURATION', cents: null
+      });
+      check('乘积溢出安全整数时拒绝计算', Calc.calculateLessonFeeCents(Number.MAX_SAFE_INTEGER, 2), {
+        ok: false, code: 'FEE_OVERFLOW', cents: null
+      });
+      var maxSafe = BigInt(Number.MAX_SAFE_INTEGER);
+      var maxSafeFee = Number(
+        (maxSafe / BigInt(60)) + ((maxSafe % BigInt(60)) >= BigInt(30) ? BigInt(1) : BigInt(0))
+      );
+      check('安全整数上界的费用仍为整数', Calc.calculateLessonFeeCents(Number.MAX_SAFE_INTEGER, 1), {
+        ok: true, cents: maxSafeFee, code: null
+      });
+
+      /* ---------- 旧时薪超过两位小数时的精确迁移 ---------- */
+      check('旧时薪 0.145 元 × 60 分钟 = 15 分', Calc.legacyLessonFeeCents(0.145, 60), 15);
+      check('旧时薪 1.005 元 × 60 分钟 = 101 分', Calc.legacyLessonFeeCents(1.005, 60), 101);
+      check('旧时薪 0.001 元 × 600 分钟 = 1 分', Calc.legacyLessonFeeCents(0.001, 600), 1);
+      check('先把旧时薪转分会丢失的尾数仍保留', Calc.legacyYuanToCents(0.001), 0);
+      check('旧时薪 120.555 元 × 45 分钟 = 9042 分', Calc.legacyLessonFeeCents(120.555, 45), 9042);
+      check('旧时薪科学计数法 1e-7 × 60000000 分钟 = 10 分', Calc.legacyLessonFeeCents(1e-7, 60000000), 10);
+      check('旧时薪非法时严格计算返回错误', Calc.calculateLegacyLessonFeeCents(-1, 60).code, 'INVALID_LEGACY_RATE');
+      check('旧费用超出安全整数时严格计算返回错误', Calc.calculateLegacyLessonFeeCents(1000000, Number.MAX_SAFE_INTEGER).code, 'FEE_OVERFLOW');
+
+      /* ---------- 先逐节取整，再汇总 ---------- */
+      var roundingSample = [
+        { id: 'r1', date: '2026-11-01', duration: 20, hourlyRateCents: 1000, feeCents: 333 },
+        { id: 'r2', date: '2026-11-02', duration: 20, hourlyRateCents: 1000, feeCents: 333 },
+        { id: 'r3', date: '2026-11-03', duration: 20, hourlyRateCents: 1000, feeCents: 333 }
+      ];
+      var rounded = Calc.summarize(roundingSample, '2026-11');
+      check('三节 333 分先取整再汇总 = 999 分', rounded.totalCents, 999);
+      check('999 分展示为 9.99 元', I18N.formatCurrencyCents(rounded.totalCents), '¥9.99');
+      check('每节费用分别取整', Calc.lessonFeeCentsFromRate(1000, 20), 333);
 
       /* ---------- 时长格式化 ---------- */
       check('150 分钟 = 2 小时 30 分钟', Calc.minutesToText(150), '2 小时 30 分钟');
@@ -115,26 +255,25 @@
       check('斜杠格式非法', Calc.isValidDateString('2026/02/28'), false);
       check('空值非法', Calc.isValidDateString(''), false);
 
-      /* ---------- 本月汇总 ---------- */
+      /* ---------- 本月 / 全年汇总 ---------- */
       var sample = [
-        { id: 'a', student: '小明', date: '2026-11-01', duration: 90, rate: 120, createdAt: 1 },
-        { id: 'b', student: '小红', date: '2026-11-03', duration: 60, rate: 100, createdAt: 2 },
-        { id: 'c', student: '小刚', date: '2026-10-20', duration: 120, rate: 150, createdAt: 3 }
+        { id: 'a', student: '小明', date: '2026-11-01', duration: 90, hourlyRateCents: 12000, feeCents: 18000, createdAt: 1 },
+        { id: 'b', student: '小红', date: '2026-11-03', duration: 60, hourlyRateCents: 10000, feeCents: 10000, createdAt: 2 },
+        { id: 'c', student: '小刚', date: '2026-10-20', duration: 120, hourlyRateCents: 15000, feeCents: 30000, createdAt: 3 }
       ];
       var month = Calc.summarize(sample, '2026-11');
 
       check('本月课程次数为 2', month.count, 2);
       check('本月总时长为 150 分钟', month.totalMinutes, 150);
-      check('本月收入为 280', month.totalIncome, 280);
+      check('本月收入为 28000 分', month.totalCents, 28000);
       check('本月时长文本', month.durationText, '2 小时 30 分钟');
       check(
         '空数据汇总不报错',
         Calc.summarize([], '2026-11'),
-        { count: 0, totalMinutes: 0, totalIncome: 0, durationText: '0 分钟' }
+        { count: 0, totalMinutes: 0, totalCents: 0, durationText: '0 分钟' }
       );
       check('非本月数据不计入', Calc.summarize(sample, '2026-09').count, 0);
 
-      /* ---------- 全年汇总 ---------- */
       check('年份键取前 4 位', Calc.yearKey('2026-11-03'), '2026');
       check('年份标签', Calc.yearLabel('2026'), '2026 年');
       check('当前年份格式正确', /^\d{4}$/.test(Calc.currentYearKey()), true);
@@ -142,7 +281,7 @@
       var year = Calc.summarizeYear(sample, '2026');
       check('全年课程次数为 3', year.count, 3);
       check('全年总时长为 270 分钟', year.totalMinutes, 270);
-      check('全年收入为 580', year.totalIncome, 580);
+      check('全年收入为 58000 分', year.totalCents, 58000);
       check('上一年数据不计入', Calc.summarizeYear(sample, '2025').count, 0);
 
       /* ---------- 收款状态与应收 / 已收 / 待收 ---------- */
@@ -151,24 +290,24 @@
       check('paid 为 false 是待收款', Calc.isPaid({ paid: false }), false);
 
       var paymentSample = [
-        { id: 'p1', date: '2026-11-01', duration: 90, rate: 120, paid: true },
-        { id: 'p2', date: '2026-11-03', duration: 60, rate: 100, paid: false },
-        { id: 'p3', date: '2026-11-05', duration: 45, rate: 130 },
-        { id: 'p4', date: '2026-10-20', duration: 120, rate: 150, paid: true },
-        { id: 'p5', date: '2025-12-31', duration: 30, rate: 200, paid: true }
+        { id: 'p1', date: '2026-11-01', duration: 90, hourlyRateCents: 12000, feeCents: 18000, paid: true },
+        { id: 'p2', date: '2026-11-03', duration: 60, hourlyRateCents: 10000, feeCents: 10000, paid: false },
+        { id: 'p3', date: '2026-11-05', duration: 45, hourlyRateCents: 13000, feeCents: 9750 },
+        { id: 'p4', date: '2026-10-20', duration: 120, hourlyRateCents: 15000, feeCents: 30000, paid: true },
+        { id: 'p5', date: '2025-12-31', duration: 30, hourlyRateCents: 20000, feeCents: 10000, paid: true }
       ];
 
       var monthPay = Calc.summarizeMonthPayments(paymentSample, '2026-11');
-      check('本月应收 = 已收 + 待收', monthPay.totalIncome, 377.5);
-      check('本月已收', monthPay.paidIncome, 180);
-      check('本月待收', monthPay.unpaidIncome, 197.5);
+      check('本月应收 = 已收 + 待收', monthPay.totalCents, 37750);
+      check('本月已收', monthPay.paidCents, 18000);
+      check('本月待收', monthPay.unpaidCents, 19750);
       check('本月已收节数', monthPay.paidCount, 1);
       check('本月待收节数', monthPay.unpaidCount, 2);
 
       var yearPay = Calc.summarizeYearPayments(paymentSample, '2026');
-      check('全年应收', yearPay.totalIncome, 677.5);
-      check('全年已收', yearPay.paidIncome, 480);
-      check('全年待收', yearPay.unpaidIncome, 197.5);
+      check('全年应收', yearPay.totalCents, 67750);
+      check('全年已收', yearPay.paidCents, 48000);
+      check('全年待收', yearPay.unpaidCents, 19750);
       check('上一年收款不计入本年', yearPay.paidCount, 2);
 
       /* ---------- 学生姓名解析 ---------- */
@@ -206,6 +345,63 @@
         [2, 1]
       );
 
+      /* ---------- 月度账目筛选 ---------- */
+      var filterStudents = {
+        s1: { id: 's1', name: '小明', subject: '数学' },
+        s2: { id: 's2', name: '小红', subject: '英语' }
+      };
+      var filterLessons = [
+        { id: 'f1', studentId: 's1', student: '小明', date: '2026-11-01', duration: 60, hourlyRateCents: 10000, feeCents: 10000, paid: true },
+        { id: 'f2', studentId: 's1', student: '小明', date: '2026-11-02', duration: 90, hourlyRateCents: 10000, feeCents: 15000, paid: false },
+        { id: 'f3', studentId: 's2', student: '小红', date: '2026-11-03', duration: 60, hourlyRateCents: 12000, feeCents: 12000, paid: false },
+        { id: 'f4', studentId: 's2', student: '小红', date: '2026-10-01', duration: 60, hourlyRateCents: 12000, feeCents: 12000, paid: true }
+      ];
+      var novFiltered = Calc.filterLessons(filterLessons, {
+        monthKey: '2026-11',
+        studentsById: filterStudents
+      });
+      check('月度筛选只保留所选月份', novFiltered.length, 3);
+      check(
+        '按学生姓名筛选',
+        Calc.filterLessons(filterLessons, {
+          monthKey: '2026-11', studentName: '小红', studentsById: filterStudents
+        }).map(function (lesson) { return lesson.id; }),
+        ['f3']
+      );
+      check(
+        '按科目筛选',
+        Calc.filterLessons(filterLessons, {
+          monthKey: '2026-11', subject: '数学', studentsById: filterStudents
+        }).length,
+        2
+      );
+      check(
+        '按未收状态筛选',
+        Calc.filterLessons(filterLessons, {
+          monthKey: '2026-11', status: 'unpaid', studentsById: filterStudents
+        }).length,
+        2
+      );
+      check(
+        '按已收状态筛选',
+        Calc.filterLessons(filterLessons, {
+          monthKey: '2026-11', status: 'paid', studentsById: filterStudents
+        }).length,
+        1
+      );
+      check(
+        '组合筛选',
+        Calc.filterLessons(filterLessons, {
+          monthKey: '2026-11', subject: '英语', status: 'unpaid', studentsById: filterStudents
+        }).map(function (lesson) { return lesson.id; }),
+        ['f3']
+      );
+      var novSummary = Calc.summarizeList(novFiltered);
+      check('筛选结果节数', novSummary.count, 3);
+      check('筛选结果总分钟', novSummary.totalMinutes, 210);
+      check('筛选结果总金额', novSummary.totalCents, 37000);
+      check('筛选结果时长文本', novSummary.durationText, '3 小时 30 分钟');
+
       /* ---------- 日历辅助 ---------- */
       check(
         '筛选某一天的课程',
@@ -228,30 +424,30 @@
       /* ---------- 月度收入趋势 ---------- */
       var trend = Calc.monthlyRevenue(paymentSample, '2026');
       check('趋势图固定 12 个月', trend.length, 12);
-      check('没有课程的月份为 0', trend[0].totalIncome, 0);
-      check('10 月收入', trend[9].totalIncome, 300);
-      check('11 月收入', trend[10].totalIncome, 377.5);
-      check('11 月已收', trend[10].paidIncome, 180);
-      check('11 月待收', trend[10].unpaidIncome, 197.5);
+      check('没有课程的月份为 0', trend[0].totalCents, 0);
+      check('10 月收入', trend[9].totalCents, 30000);
+      check('11 月收入', trend[10].totalCents, 37750);
+      check('11 月已收', trend[10].paidCents, 18000);
+      check('11 月待收', trend[10].unpaidCents, 19750);
       check('趋势月份标签', trend[10].label, '11 月');
 
       /* ---------- 学生收入排行 ---------- */
       var studentLessons = [
-        { id: 'x1', studentId: 's1', student: '小明', date: '2026-11-01', duration: 60, rate: 100, paid: true },
-        { id: 'x2', studentId: 's1', student: '小明', date: '2026-11-02', duration: 30, rate: 100, paid: false },
-        { id: 'x3', studentId: 's2', student: '小红', date: '2026-11-03', duration: 90, rate: 120, paid: true },
-        { id: 'x4', studentId: 's2', student: '小红', date: '2026-11-04', duration: 60, rate: 120, paid: true },
-        { id: 'x5', studentId: 'gone', student: '已删除学生', date: '2026-10-05', duration: 60, rate: 200, paid: true }
+        { id: 'x1', studentId: 's1', student: '小明', date: '2026-11-01', duration: 60, hourlyRateCents: 10000, feeCents: 10000, paid: true },
+        { id: 'x2', studentId: 's1', student: '小明', date: '2026-11-02', duration: 30, hourlyRateCents: 10000, feeCents: 5000, paid: false },
+        { id: 'x3', studentId: 's2', student: '小红', date: '2026-11-03', duration: 90, hourlyRateCents: 12000, feeCents: 18000, paid: true },
+        { id: 'x4', studentId: 's2', student: '小红', date: '2026-11-04', duration: 60, hourlyRateCents: 12000, feeCents: 12000, paid: true },
+        { id: 'x5', studentId: 'gone', student: '已删除学生', date: '2026-10-05', duration: 60, hourlyRateCents: 20000, feeCents: 20000, paid: true }
       ];
       var studentsById = { s1: { id: 's1', name: '小明A' }, s2: { id: 's2', name: '小红' } };
 
       var monthRank = Calc.summarizeStudentsMonth(studentLessons, '2026-11', studentsById);
       check('月度排行按收入从高到低', monthRank.map(function (row) { return row.name; }), ['小红', '小明A']);
-      check('月度排行收入', monthRank.map(function (row) { return row.totalIncome; }), [300, 150]);
+      check('月度排行收入', monthRank.map(function (row) { return row.totalCents; }), [30000, 15000]);
 
       var yearRank = Calc.summarizeStudentsYear(studentLessons, '2026', studentsById);
       check('年度排行保留已删除学生', yearRank.map(function (row) { return row.name; }), ['小红', '已删除学生', '小明A']);
-      check('已删除学生收入不丢失', yearRank[1].totalIncome, 200);
+      check('已删除学生收入不丢失', yearRank[1].totalCents, 20000);
       check('课程记录年份从新到旧', Calc.yearsWithLessons(paymentSample), ['2026', '2025']);
 
       /* ---------- 多语言格式化 ---------- */
@@ -260,7 +456,8 @@
       check('英文日期', I18N.formatDate('2026-11-03'), 'Nov 3, 2026');
       check('英文星期标签', Calc.weekdayLabel('2026-11-03'), 'Tue');
       check('英文时长', Calc.minutesToText(150), '2 hrs 30 min');
-      check('英文金额格式', Calc.formatMoney(1860), '1,860.00');
+      check('英文金额格式', I18N.formatCents(186000), '1,860.00');
+      check('英文带符号金额', I18N.formatCurrencyCents(9750), '¥97.50');
       check('英文课程计数（复数）', I18N.count('lessons', 2), '2 lessons');
       check('英文课程计数（单数）', I18N.count('lessons', 1), '1 lesson');
 
@@ -269,6 +466,7 @@
       check('繁体星期标签', Calc.weekdayLabel('2026-11-03'), '週二');
       check('繁体时长', Calc.minutesToText(150), '2 小時 30 分鐘');
       check('繁体记录计数', I18N.count('records', 2), '2 條');
+      check('繁体金额格式', I18N.formatCents(186000), '1,860.00');
 
       I18N.setLanguage('zh-CN', { persist: false });
       check('缺失翻译回退到键名', I18N.t('missing.key'), 'missing.key');

@@ -26,6 +26,8 @@
   function init() {
     els.periodLabel = document.getElementById('period-label');
     els.statsHint = document.getElementById('stats-hint');
+    els.statsCompare = document.getElementById('stats-compare');
+    els.statsMonth = document.getElementById('stats-month');
     els.statReceivableLabel = document.getElementById('stat-receivable-label');
     els.statReceivable = document.getElementById('stat-receivable');
     els.statPaidLabel = document.getElementById('stat-paid-label');
@@ -37,6 +39,20 @@
     els.statCount = document.getElementById('stat-count');
     els.statDuration = document.getElementById('stat-duration');
     els.periodButtons = Array.prototype.slice.call(document.querySelectorAll('[data-period]'));
+
+    els.ledgerMonthLabel = document.getElementById('ledger-month-label');
+    els.ledgerSummary = document.getElementById('ledger-summary');
+    els.ledgerList = document.getElementById('ledger-list');
+    els.ledgerEmpty = document.getElementById('ledger-empty');
+    els.ledgerTemplate = document.getElementById('ledger-item-template');
+    els.ledgerStudent = document.getElementById('ledger-student');
+    els.ledgerSubject = document.getElementById('ledger-subject');
+    els.ledgerStatus = document.getElementById('ledger-status');
+
+    els.outstandingTotal = document.getElementById('outstanding-total');
+    els.outstandingCount = document.getElementById('outstanding-count');
+    els.outstandingList = document.getElementById('outstanding-list');
+    els.outstandingEmpty = document.getElementById('outstanding-empty');
 
     els.lessonCount = document.getElementById('lesson-count');
     els.list = document.getElementById('lesson-list');
@@ -105,6 +121,8 @@
     els.studentChartEmpty = document.getElementById('student-chart-empty');
 
     els.exportBackup = document.getElementById('export-backup');
+    els.exportRaw = document.getElementById('export-raw');
+    els.rawExportHint = document.getElementById('raw-export-hint');
     els.importTrigger = document.getElementById('import-trigger');
     els.importFile = document.getElementById('import-file');
     els.importStatus = document.getElementById('import-status');
@@ -113,26 +131,46 @@
 
   /* ---------------- 概览 ---------------- */
 
-  /** 概览：应收 / 已收 / 待收 / 次数 / 总时长，支持本月与全年 */
-  function renderStats(summary, period, key) {
+  /** 概览：应收 / 已收 / 待收 / 节数 / 总时长，支持所选月份与全年 */
+  function renderStats(summary, period, key, compareDelta) {
     var isYear = period === 'year';
     var periodKey = isYear ? 'year' : 'month';
 
     els.periodLabel.textContent = isYear ? Calc.yearLabel(key) : Calc.monthLabel(key);
+    els.periodLabel.hidden = !isYear;
     els.statsHint.textContent = t('stats.hint.' + periodKey);
 
     els.statReceivableLabel.textContent = t('stats.label.receivable.' + periodKey);
     els.statPaidLabel.textContent = t('stats.label.paid.' + periodKey);
     els.statUnpaidLabel.textContent = t('stats.label.unpaid.' + periodKey);
 
-    els.statReceivable.textContent = I18N.formatCurrency(summary.totalIncome);
-    els.statPaid.textContent = I18N.formatCurrency(summary.paidIncome);
-    els.statUnpaid.textContent = I18N.formatCurrency(summary.unpaidIncome);
+    els.statReceivable.textContent = I18N.formatCurrencyCents(summary.totalCents);
+    els.statPaid.textContent = I18N.formatCurrencyCents(summary.paidCents);
+    els.statUnpaid.textContent = I18N.formatCurrencyCents(summary.unpaidCents);
     els.statPaidSub.textContent = count('lessons', summary.paidCount);
     els.statUnpaidSub.textContent = count('lessons', summary.unpaidCount);
 
     els.statCount.textContent = count('lessons', summary.count);
     els.statDuration.textContent = summary.durationText;
+
+    if (!isYear && typeof compareDelta === 'number') {
+      var delta = Math.abs(compareDelta);
+      if (delta === 0) {
+        els.statsCompare.textContent = t('stats.compare.flat');
+        els.statsCompare.dataset.state = 'flat';
+      } else {
+        els.statsCompare.textContent = t(
+          compareDelta > 0 ? 'stats.compare.up' : 'stats.compare.down',
+          { amount: I18N.formatCurrencyCents(delta) }
+        );
+        els.statsCompare.dataset.state = compareDelta > 0 ? 'up' : 'down';
+      }
+      els.statsCompare.hidden = false;
+    } else {
+      els.statsCompare.hidden = true;
+      els.statsCompare.textContent = '';
+      els.statsCompare.dataset.state = '';
+    }
 
     els.periodButtons.forEach(function (button) {
       button.setAttribute(
@@ -140,6 +178,12 @@
         button.dataset.period === period ? 'true' : 'false'
       );
     });
+  }
+
+  function setStatsMonth(value) {
+    if (els.statsMonth && /^\d{4}-\d{2}$/.test(String(value))) {
+      els.statsMonth.value = value;
+    }
   }
 
   function renderCount(total) {
@@ -207,9 +251,9 @@
       node.querySelector('[data-field="date"]').textContent = I18N.formatDate(lesson.date);
       node.querySelector('[data-field="duration"]').textContent = Calc.minutesToText(lesson.duration);
       node.querySelector('[data-field="rate"]').textContent =
-        t('currency.perHour', { amount: I18N.formatCurrency(lesson.rate) });
+        t('currency.perHour', { amount: I18N.formatCurrencyCents(lesson.hourlyRateCents) });
       node.querySelector('[data-field="income"]').textContent =
-        I18N.formatCurrency(Calc.lessonIncome(lesson));
+        I18N.formatCurrencyCents(Calc.lessonFeeCents(lesson));
 
       decorateLessonActions(node, lesson, name);
 
@@ -217,6 +261,104 @@
     });
 
     els.list.appendChild(fragment);
+  }
+
+  /* ---------------- 月度账目与未收款项 ---------------- */
+
+  function subjectFor(lesson, studentsById) {
+    var student = lesson.studentId ? studentsById[lesson.studentId] : null;
+    return student && student.subject ? student.subject : '';
+  }
+
+  function fillLedgerItem(node, lesson, studentsById) {
+    var name = Calc.resolveStudentName(lesson, studentsById);
+    var subject = subjectFor(lesson, studentsById) || t('ledger.noSubject');
+
+    node.dataset.id = lesson.id;
+    node.querySelector('[data-field="student"]').textContent = name;
+    node.querySelector('[data-field="date"]').textContent = I18N.formatDate(lesson.date);
+    node.querySelector('[data-field="subject"]').textContent = subject;
+    node.querySelector('[data-field="duration"]').textContent = Calc.minutesToText(lesson.duration);
+    node.querySelector('[data-field="rate"]').textContent =
+      t('currency.perHour', { amount: I18N.formatCurrencyCents(lesson.hourlyRateCents) });
+    node.querySelector('[data-field="amount"]').textContent =
+      I18N.formatCurrencyCents(Calc.lessonFeeCents(lesson));
+
+    decorateLessonActions(node, lesson, name);
+  }
+
+  /** 月度课程明细：月份 + 学生姓名 + 科目 + 收款状态筛选 */
+  function renderLedger(lessons, studentsById, filters) {
+    var opts = filters || {};
+    var filtered = Calc.filterLessons(lessons, {
+      monthKey: opts.monthKey,
+      studentName: opts.studentName,
+      subject: opts.subject,
+      status: opts.status,
+      studentsById: studentsById
+    });
+    var rows = Calc.sortLessons(filtered);
+    var summary = Calc.summarizeList(rows);
+
+    els.ledgerMonthLabel.textContent = Calc.monthLabel(opts.monthKey);
+    els.ledgerSummary.textContent = t('ledger.total', {
+      count: count('lessons', summary.count),
+      duration: Calc.minutesToText(summary.totalMinutes),
+      amount: I18N.formatCurrencyCents(summary.totalCents)
+    });
+
+    els.ledgerList.textContent = '';
+    els.ledgerEmpty.hidden = rows.length > 0;
+
+    if (!rows.length) return;
+
+    var fragment = document.createDocumentFragment();
+    rows.forEach(function (lesson) {
+      var node = els.ledgerTemplate.content.firstElementChild.cloneNode(true);
+      fillLedgerItem(node, lesson, studentsById);
+      fragment.appendChild(node);
+    });
+    els.ledgerList.appendChild(fragment);
+  }
+
+  /** 所有尚未收款的课程，按上课日期从早到晚排列 */
+  function renderOutstanding(lessons, studentsById) {
+    var list = Array.isArray(lessons) ? lessons : [];
+    var unpaid = list.filter(function (lesson) {
+      return lesson && !Calc.isPaid(lesson);
+    });
+
+    unpaid.sort(function (a, b) {
+      if (a.date !== b.date) return a.date < b.date ? -1 : 1;
+      return (a.createdAt || 0) - (b.createdAt || 0);
+    });
+
+    var cents = 0;
+    unpaid.forEach(function (lesson) {
+      cents += Calc.lessonFeeCents(lesson);
+    });
+
+    els.outstandingTotal.textContent = I18N.formatCurrencyCents(cents);
+    els.outstandingCount.textContent = count('records', unpaid.length);
+    els.outstandingList.textContent = '';
+    els.outstandingEmpty.hidden = unpaid.length > 0;
+
+    if (!unpaid.length) return;
+
+    var fragment = document.createDocumentFragment();
+    unpaid.forEach(function (lesson) {
+      var node = els.ledgerTemplate.content.firstElementChild.cloneNode(true);
+      fillLedgerItem(node, lesson, studentsById);
+      fragment.appendChild(node);
+    });
+    els.outstandingList.appendChild(fragment);
+  }
+
+  function setLedgerFilterValues(filters) {
+    var opts = filters || {};
+    if (els.ledgerStudent) els.ledgerStudent.value = opts.studentName || '';
+    if (els.ledgerSubject) els.ledgerSubject.value = opts.subject || '';
+    if (els.ledgerStatus) els.ledgerStatus.value = opts.status || 'all';
   }
 
   /* ---------------- 学生列表与下拉框 ---------------- */
@@ -247,7 +389,7 @@
         meta.length ? meta.join(' · ') : t('students.metaFallback');
 
       node.querySelector('[data-field="rate"]').textContent =
-        t('currency.perHour', { amount: I18N.formatCurrency(student.rate) });
+        t('currency.perHour', { amount: I18N.formatCurrencyCents(student.hourlyRateCents) });
 
       if (student.id === editingId) {
         node.classList.add('student--editing');
@@ -326,12 +468,13 @@
   function selectLessonStudent(student) {
     if (!student) return;
     els.lessonStudent.value = student.id;
-    setLessonRate(student.rate);
+    setLessonRate(student.hourlyRateCents);
   }
 
-  function setLessonRate(value) {
+  /** cents 为整数分；输入框始终展示元 */
+  function setLessonRate(cents) {
     els.form.elements.rate.value =
-      value === null || value === undefined ? '' : String(value);
+      cents === null || cents === undefined ? '' : Calc.centsToYuanInput(cents);
   }
 
   /* ---------------- 记课表单 ---------------- */
@@ -346,18 +489,16 @@
   /** 根据当前编辑表单里的时长和课时费刷新收入预览 */
   function refreshEditIncomePreview() {
     var duration = Number(els.lessonEditForm.elements.duration.value);
-    var rate = Number(els.lessonEditForm.elements.rate.value);
+    var rate = Calc.parseYuanInput(els.lessonEditForm.elements.rate.value);
 
     var valid =
       els.lessonEditForm.elements.duration.value !== '' &&
-      els.lessonEditForm.elements.rate.value !== '' &&
       Number.isFinite(duration) &&
-      Number.isFinite(rate) &&
       duration > 0 &&
-      rate >= 0;
+      rate.ok;
 
     els.editIncomePreview.textContent = valid
-      ? I18N.formatCurrency(Calc.lessonIncome({ duration: duration, rate: rate }))
+      ? I18N.formatCurrencyCents(Calc.lessonFeeCentsFromRate(rate.cents, duration))
       : '—';
   }
 
@@ -407,7 +548,8 @@
     setEditStudentOptions(students, lesson);
     els.lessonEditForm.elements.date.value = lesson.date;
     els.lessonEditForm.elements.duration.value = String(lesson.duration);
-    els.lessonEditForm.elements.rate.value = String(lesson.rate);
+    els.lessonEditForm.elements.rate.value =
+      Calc.centsToYuanInput(lesson.hourlyRateCents);
 
     var paid = Calc.isPaid(lesson) ? 'paid' : 'unpaid';
     var paidInput = els.lessonEditForm.elements.namedItem('paid');
@@ -629,7 +771,8 @@
       els.studentForm.elements.name.value = student.name;
       els.studentForm.elements.grade.value = student.grade || '';
       els.studentForm.elements.subject.value = student.subject || '';
-      els.studentForm.elements.rate.value = String(student.rate);
+      els.studentForm.elements.rate.value =
+        Calc.centsToYuanInput(student.hourlyRateCents);
       refreshStudentFormMode('edit', student);
       focusStudentName();
     } else {
@@ -698,7 +841,7 @@
       var cents = 0;
 
       dayLessons.forEach(function (lesson) {
-        cents += Math.round(Calc.lessonIncome(lesson) * 100);
+        cents += Calc.lessonFeeCents(lesson);
       });
 
       var node = document.createElement('button');
@@ -729,7 +872,7 @@
 
         var amount = document.createElement('span');
         amount.className = 'calendar__amount';
-        amount.textContent = I18N.formatCurrency(cents / 100);
+        amount.textContent = I18N.formatCurrencyCents(cents);
 
         info.appendChild(countNode);
         info.appendChild(amount);
@@ -758,7 +901,7 @@
           date: dateLabel,
           weekday: weekdayText,
           count: count('lessons', dayLessons.length),
-          amount: I18N.formatCurrency(cents / 100)
+          amount: I18N.formatCurrencyCents(cents)
         })
         : t('calendar.cellNoLessons', {
           date: dateLabel,
@@ -796,14 +939,14 @@
     var cents = 0;
     dayLessons.forEach(function (lesson) {
       minutes += Math.max(0, Math.round(Number(lesson.duration) || 0));
-      cents += Math.round(Calc.lessonIncome(lesson) * 100);
+      cents += Calc.lessonFeeCents(lesson);
     });
 
     els.calendarDaySummary.textContent = dayLessons.length
       ? t('calendar.daySummaryLine', {
         count: count('lessons', dayLessons.length),
         duration: Calc.minutesToText(minutes),
-        amount: I18N.formatCurrency(cents / 100)
+        amount: I18N.formatCurrencyCents(cents)
       })
       : t('calendar.noLessonsSummary');
 
@@ -826,9 +969,9 @@
       node.querySelector('[data-field="duration"]').textContent =
         Calc.minutesToText(lesson.duration);
       node.querySelector('[data-field="rate"]').textContent =
-        t('currency.perHour', { amount: I18N.formatCurrency(lesson.rate) });
+        t('currency.perHour', { amount: I18N.formatCurrencyCents(lesson.hourlyRateCents) });
       node.querySelector('[data-field="income"]').textContent =
-        I18N.formatCurrency(Calc.lessonIncome(lesson));
+        I18N.formatCurrencyCents(Calc.lessonFeeCents(lesson));
 
       decorateLessonActions(node, lesson, name);
       fragment.appendChild(node);
@@ -906,8 +1049,8 @@
     var hasData = false;
 
     rows.forEach(function (row) {
-      if (row.totalIncome > max) max = row.totalIncome;
-      total += row.totalIncome;
+      if (row.totalCents > max) max = row.totalCents;
+      total += row.totalCents;
       if (row.count > 0) hasData = true;
     });
 
@@ -916,7 +1059,7 @@
       'aria-label',
       t('analysis.trendAria', {
         year: yearKey,
-        amount: I18N.formatCurrency(total)
+        amount: I18N.formatCurrencyCents(total)
       })
     );
 
@@ -926,7 +1069,7 @@
 
       var value = document.createElement('span');
       value.className = 'trend-chart__value';
-      value.textContent = I18N.formatCompactCurrency(row.totalIncome);
+      value.textContent = I18N.formatCompactCurrencyCents(row.totalCents);
 
       var track = document.createElement('span');
       track.className = 'trend-chart__track';
@@ -934,14 +1077,14 @@
       var bar = document.createElement('span');
       bar.className = 'trend-chart__bar';
       var percent = max > 0
-        ? Math.max((row.totalIncome / max) * 100, row.totalIncome > 0 ? 2 : 0)
+        ? Math.max((row.totalCents / max) * 100, row.totalCents > 0 ? 2 : 0)
         : 0;
       bar.style.height = percent + '%';
 
       var description = t('analysis.trendBarAria', {
         year: yearKey,
         month: I18N.monthName(row.month),
-        amount: I18N.formatCurrency(row.totalIncome),
+        amount: I18N.formatCurrencyCents(row.totalCents),
         count: count('lessons', row.count)
       });
       bar.title = description;
@@ -964,17 +1107,17 @@
   function renderPaymentAnalysis(summary, period, key) {
     var isYear = period === 'year';
     var rangeLabel = isYear ? Calc.yearLabel(key) : Calc.monthLabel(key);
-    var total = summary.totalIncome;
+    var total = summary.totalCents;
 
     els.analysisRangeLabel.textContent = rangeLabel;
-    els.analysisReceivable.textContent = I18N.formatCurrency(total);
-    els.analysisPaid.textContent = I18N.formatCurrency(summary.paidIncome);
+    els.analysisReceivable.textContent = I18N.formatCurrencyCents(total);
+    els.analysisPaid.textContent = I18N.formatCurrencyCents(summary.paidCents);
     els.analysisPaidSub.textContent = count('lessons', summary.paidCount);
-    els.analysisUnpaid.textContent = I18N.formatCurrency(summary.unpaidIncome);
+    els.analysisUnpaid.textContent = I18N.formatCurrencyCents(summary.unpaidCents);
     els.analysisUnpaidSub.textContent = count('lessons', summary.unpaidCount);
 
-    var paidPercent = total > 0 ? (summary.paidIncome / total) * 100 : 0;
-    var unpaidPercent = total > 0 ? (summary.unpaidIncome / total) * 100 : 0;
+    var paidPercent = total > 0 ? (summary.paidCents / total) * 100 : 0;
+    var unpaidPercent = total > 0 ? (summary.unpaidCents / total) * 100 : 0;
     els.paymentBarPaid.style.width = paidPercent + '%';
     els.paymentBarUnpaid.style.width = unpaidPercent + '%';
     els.paymentBar.classList.toggle('split-bar--empty', total <= 0);
@@ -982,9 +1125,9 @@
       'aria-label',
       t('analysis.paymentBarAria', {
         range: rangeLabel,
-        receivable: I18N.formatCurrency(total),
-        paid: I18N.formatCurrency(summary.paidIncome),
-        unpaid: I18N.formatCurrency(summary.unpaidIncome)
+        receivable: I18N.formatCurrencyCents(total),
+        paid: I18N.formatCurrencyCents(summary.paidCents),
+        unpaid: I18N.formatCurrencyCents(summary.unpaidCents)
       })
     );
     els.paymentEmpty.hidden = (summary.paidCount + summary.unpaidCount) > 0;
@@ -1014,7 +1157,7 @@
 
     if (!hasRows) return;
 
-    var max = rows[0].totalIncome;
+    var max = rows[0].totalCents;
     rows.forEach(function (row) {
       var name = row.name;
       if (row.studentId && studentsById && !studentsById[row.studentId]) {
@@ -1035,7 +1178,7 @@
       meta.className = 'rank-row__meta';
       meta.textContent = t('analysis.rank.meta', {
         count: count('lessons', row.count),
-        amount: I18N.formatCurrency(row.totalIncome)
+        amount: I18N.formatCurrencyCents(row.totalCents)
       });
 
       top.appendChild(nameNode);
@@ -1047,7 +1190,7 @@
       var bar = document.createElement('span');
       bar.className = 'rank-row__bar';
       var percent = max > 0
-        ? Math.max((row.totalIncome / max) * 100, row.totalIncome > 0 ? 2 : 0)
+        ? Math.max((row.totalCents / max) * 100, row.totalCents > 0 ? 2 : 0)
         : 0;
       bar.style.width = percent + '%';
 
@@ -1059,7 +1202,7 @@
         t('analysis.rank.itemAria', {
           name: name,
           count: count('lessons', row.count),
-          amount: I18N.formatCurrency(row.totalIncome)
+          amount: I18N.formatCurrencyCents(row.totalCents)
         })
       );
       els.studentChart.appendChild(item);
@@ -1067,6 +1210,12 @@
   }
 
   /* ---------------- 数据管理 ---------------- */
+
+  /** 只在只读或数据加载失败时显示原始恢复文件导出 */
+  function setRawExportVisible(visible) {
+    if (els.exportRaw) els.exportRaw.hidden = !visible;
+    if (els.rawExportHint) els.rawExportHint.hidden = !visible;
+  }
 
   function renderDataSummary(studentsCount, lessonsCount) {
     els.dataSummary.textContent = t('data.summary', {
@@ -1090,21 +1239,44 @@
 
   /* ---------------- 通用提示 ---------------- */
 
-  function showToast(message, state) {
-    els.toast.textContent = message;
+  function showToast(message, state, action) {
+    els.toast.textContent = '';
+
+    var text = document.createElement('span');
+    text.className = 'toast__text';
+    text.textContent = message;
+    els.toast.appendChild(text);
+
+    var duration = 3200;
+    if (action && action.label) {
+      var button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'toast__action';
+      button.textContent = action.label;
+      button.addEventListener('click', function () {
+        hideToast();
+        if (typeof action.onClick === 'function') action.onClick();
+      });
+      els.toast.appendChild(button);
+      duration = 6000;
+    }
+
     els.toast.dataset.state = state || '';
+    els.toast.dataset.action = action && action.label ? 'true' : 'false';
     els.toast.hidden = false;
 
     if (toastTimer) clearTimeout(toastTimer);
     toastTimer = setTimeout(function () {
       els.toast.hidden = true;
-    }, 3200);
+    }, duration);
   }
 
   function hideToast() {
     if (toastTimer) clearTimeout(toastTimer);
     toastTimer = null;
     els.toast.hidden = true;
+    els.toast.textContent = '';
+    els.toast.dataset.action = 'false';
   }
 
   function showStorageWarning(message) {
@@ -1112,11 +1284,20 @@
     els.warning.hidden = false;
   }
 
+  function hideStorageWarning() {
+    els.warning.textContent = '';
+    els.warning.hidden = true;
+  }
+
   global.UI = {
     init: init,
     renderStats: renderStats,
+    setStatsMonth: setStatsMonth,
     renderCount: renderCount,
     renderList: renderList,
+    renderLedger: renderLedger,
+    renderOutstanding: renderOutstanding,
+    setLedgerFilterValues: setLedgerFilterValues,
     renderRecordsView: renderRecordsView,
     renderCalendar: renderCalendar,
     renderCalendarDay: renderCalendarDay,
@@ -1126,6 +1307,7 @@
     renderPaymentAnalysis: renderPaymentAnalysis,
     renderStudentAnalysis: renderStudentAnalysis,
     renderDataSummary: renderDataSummary,
+    setRawExportVisible: setRawExportVisible,
     showImportStatus: showImportStatus,
     renderStudents: renderStudents,
     setLessonStudentOptions: setLessonStudentOptions,
@@ -1156,6 +1338,7 @@
     focusStudentName: focusStudentName,
     showToast: showToast,
     hideToast: hideToast,
-    showStorageWarning: showStorageWarning
+    showStorageWarning: showStorageWarning,
+    hideStorageWarning: hideStorageWarning
   };
 })(window);

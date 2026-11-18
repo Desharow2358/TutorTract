@@ -39,12 +39,17 @@
         <div class="panel__head">
           <div>
             <h2 id="stats-title" data-i18n="stats.title">收入概览</h2>
-            <p class="muted" id="stats-hint" data-i18n="stats.hint.month">按上课日期统计当前自然月</p>
+            <p class="muted" id="stats-hint" data-i18n="stats.hint.month">按上课日期统计所选月份</p>
+            <p class="stats-compare" id="stats-compare" hidden></p>
           </div>
           <div class="stats-controls">
+            <label class="select-inline stats-month" for="stats-month">
+              <span data-i18n="ledger.month">月份</span>
+              <input type="month" id="stats-month">
+            </label>
             <p class="period-label" id="period-label">—</p>
             <div class="segmented" role="group" aria-label="统计范围" data-i18n-aria-label="stats.scopeAria">
-              <button type="button" data-period="month" aria-pressed="true" data-i18n="stats.period.month">本月</button>
+              <button type="button" data-period="month" aria-pressed="true" data-i18n="stats.period.month">按月</button>
               <button type="button" data-period="year" aria-pressed="false" data-i18n="stats.period.year">全年</button>
             </div>
           </div>
@@ -52,27 +57,90 @@
 
         <div class="stats">
           <article class="stat stat--income">
-            <p class="stat__label" id="stat-receivable-label" data-i18n="stats.label.receivable.month">本月应收</p>
+            <p class="stat__label" id="stat-receivable-label" data-i18n="stats.label.receivable.month">应收</p>
             <p class="stat__value" id="stat-receivable">¥0.00</p>
           </article>
           <article class="stat stat--paid">
-            <p class="stat__label" id="stat-paid-label" data-i18n="stats.label.paid.month">本月已收</p>
+            <p class="stat__label" id="stat-paid-label" data-i18n="stats.label.paid.month">已收</p>
             <p class="stat__value" id="stat-paid">¥0.00</p>
             <p class="stat__sub" id="stat-paid-sub">0 节</p>
           </article>
           <article class="stat stat--unpaid">
-            <p class="stat__label" id="stat-unpaid-label" data-i18n="stats.label.unpaid.month">本月待收</p>
+            <p class="stat__label" id="stat-unpaid-label" data-i18n="stats.label.unpaid.month">待收</p>
             <p class="stat__value" id="stat-unpaid">¥0.00</p>
             <p class="stat__sub" id="stat-unpaid-sub">0 节</p>
           </article>
           <article class="stat">
-            <p class="stat__label" data-i18n="stats.label.count">课程次数</p>
+            <p class="stat__label" data-i18n="stats.label.count">授课节数</p>
             <p class="stat__value" id="stat-count">0 节</p>
           </article>
           <article class="stat">
-            <p class="stat__label" data-i18n="stats.label.duration">总时长</p>
+            <p class="stat__label" data-i18n="stats.label.duration">授课总时长</p>
             <p class="stat__value" id="stat-duration">0 分钟</p>
           </article>
+        </div>
+      </section>
+
+      <!-- 月度账目 -->
+      <section class="panel" aria-labelledby="ledger-title">
+        <div class="panel__head">
+          <div>
+            <h2 id="ledger-title" data-i18n="ledger.title">月度账目</h2>
+            <p class="muted" data-i18n="ledger.hint">按月份核对课时、收入和收款状态</p>
+          </div>
+          <div class="ledger-controls">
+            <p class="period-label" id="ledger-month-label">—</p>
+            <button type="button" class="btn btn--ghost btn--small" id="ledger-export" data-i18n="ledger.export">导出本月账目</button>
+          </div>
+        </div>
+
+        <div class="ledger-filters">
+          <label class="ledger-filter" for="ledger-student">
+            <span data-i18n="ledger.student">学生姓名</span>
+            <input type="search" id="ledger-student" placeholder="搜索学生姓名" data-i18n-placeholder="ledger.studentPlaceholder" autocomplete="off">
+          </label>
+          <label class="ledger-filter" for="ledger-subject">
+            <span data-i18n="ledger.subject">科目</span>
+            <input type="search" id="ledger-subject" placeholder="搜索科目" data-i18n-placeholder="ledger.subjectPlaceholder" autocomplete="off">
+          </label>
+          <label class="ledger-filter" for="ledger-status">
+            <span data-i18n="ledger.status">收款状态</span>
+            <select id="ledger-status">
+              <option value="all" data-i18n="ledger.statusAll">全部状态</option>
+              <option value="unpaid" data-i18n="status.unpaid">待收款</option>
+              <option value="paid" data-i18n="status.paid">已收款</option>
+            </select>
+          </label>
+          <button type="button" class="btn btn--ghost btn--small ledger-reset" id="ledger-reset" data-i18n="ledger.reset">重置筛选</button>
+        </div>
+
+        <p class="ledger-summary" id="ledger-summary">—</p>
+        <ul class="ledger-list" id="ledger-list"></ul>
+        <div class="empty empty--compact" id="ledger-empty" hidden>
+          <p class="empty__title" data-i18n="ledger.emptyTitle">没有匹配的课程</p>
+          <p class="empty__hint" data-i18n="ledger.emptyHint">换个筛选条件，或选择其他月份。</p>
+        </div>
+        <p class="chart-note ledger-export-note" data-i18n="ledger.exportNote">导出所选月份的全部课程，不受筛选影响</p>
+      </section>
+
+      <!-- 未收款项 -->
+      <section class="panel" aria-labelledby="outstanding-title">
+        <div class="panel__head">
+          <div>
+            <h2 id="outstanding-title" data-i18n="outstanding.title">未收款项</h2>
+            <p class="muted" data-i18n="outstanding.hint">尚未标记收款的课程，按上课日期从早到晚排列</p>
+          </div>
+          <div class="outstanding-summary">
+            <span data-i18n="outstanding.total">未收总额</span>
+            <strong id="outstanding-total">¥0.00</strong>
+            <span class="count-badge" id="outstanding-count">0 条</span>
+          </div>
+        </div>
+
+        <ul class="ledger-list" id="outstanding-list"></ul>
+        <div class="empty empty--compact" id="outstanding-empty" hidden>
+          <p class="empty__title" data-i18n="outstanding.emptyTitle">没有未收款项</p>
+          <p class="empty__hint" data-i18n="outstanding.emptyHint">所有课程都已标记收款。</p>
         </div>
       </section>
 
@@ -350,6 +418,8 @@
             <h3 data-i18n="data.export.title">导出备份</h3>
             <p class="muted" data-i18n="data.export.hint">将全部学生和课程记录导出为 JSON 文件，可用于以后恢复或换设备。</p>
             <button type="button" class="btn btn--primary" id="export-backup" data-i18n="data.export.button">导出备份</button>
+            <button type="button" class="btn btn--ghost" id="export-raw" data-i18n="data.export.raw.button" hidden>导出原始恢复文件</button>
+            <p class="muted" id="raw-export-hint" data-i18n="data.export.raw.hint" hidden>这是原始恢复文件，不是标准 TutorTrack 备份，当前版本不保证能直接导入。</p>
           </article>
 
           <article class="data-card">
@@ -423,6 +493,32 @@
       <p class="day-lesson__income" data-field="income"></p>
       <span class="status-badge" data-field="status"></span>
       <div class="day-lesson__actions">
+        <button type="button" class="btn-icon" data-action="toggle-paid"></button>
+        <button type="button" class="btn-icon" data-action="edit" data-i18n="common.edit">编辑</button>
+        <button type="button" class="btn-icon btn-icon--danger" data-action="delete" data-i18n="common.delete">删除</button>
+      </div>
+    </li>
+  </template>
+
+  <!-- 月度账目 / 未收款项行模板 -->
+  <template id="ledger-item-template">
+    <li class="ledger-item">
+      <div class="ledger-item__who">
+        <p class="ledger-item__student" data-field="student"></p>
+        <p class="ledger-item__meta">
+          <span data-field="date"></span>
+          <span class="ledger-item__sep" aria-hidden="true">·</span>
+          <span data-field="subject"></span>
+        </p>
+      </div>
+      <p class="ledger-item__amount" data-field="amount"></p>
+      <p class="ledger-item__numbers">
+        <span data-field="duration"></span>
+        <span class="ledger-item__sep" aria-hidden="true">·</span>
+        <span data-field="rate"></span>
+      </p>
+      <span class="status-badge" data-field="status"></span>
+      <div class="ledger-item__actions">
         <button type="button" class="btn-icon" data-action="toggle-paid"></button>
         <button type="button" class="btn-icon" data-action="edit" data-i18n="common.edit">编辑</button>
         <button type="button" class="btn-icon btn-icon--danger" data-action="delete" data-i18n="common.delete">删除</button>

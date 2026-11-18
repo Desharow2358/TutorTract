@@ -9,15 +9,21 @@
     period: 'month', // 'month' | 'year'
     monthKey: Calc.currentMonthKey(),
     yearKey: Calc.currentYearKey(),
+    followCurrentMonth: true,
     editingStudentId: null,
+    editingStudentFingerprint: null,
     editingLessonId: null,
+    editingLessonFingerprint: null,
     recordsView: 'list', // 'list' | 'calendar'
     calendarMonthKey: Calc.currentMonthKey(),
     selectedDate: Calc.toDateString(new Date()),
     trendYear: Calc.currentYearKey(),
     analysisPeriod: 'month', // 'month' | 'year'
     analysisYear: Calc.currentYearKey(),
-    analysisMonthKey: Calc.currentMonthKey()
+    analysisMonthKey: Calc.currentMonthKey(),
+    ledgerStudent: '',
+    ledgerSubject: '',
+    ledgerStatus: 'all' // 'all' | 'unpaid' | 'paid'
   };
 
   var form = null;
@@ -39,6 +45,54 @@
     return I18N.count(unit, value);
   }
 
+  /** 金额输入是否与历史记录等值；允许超过普通表单上限，仅用于未修改判断 */
+  function isRateUnchanged(value, original) {
+    if (!original || !Calc.isIntegerAmount(original.hourlyRateCents)) return false;
+    var parsed = Calc.parseYuanInput(value, { maxCents: Number.MAX_SAFE_INTEGER });
+    return parsed.ok && parsed.cents === original.hourlyRateCents;
+  }
+
+  /** 金额输入错误 → 对应语言的提示；prefix 为 validation.lesson / validation.student */
+  function rateErrorKey(prefix, parsed) {
+    var suffix = {
+      empty: 'Required',
+      format: 'Number',
+      decimals: 'Decimals',
+      range: 'Range'
+    }[parsed && parsed.reason] || 'Number';
+    return prefix + '.rate' + suffix;
+  }
+
+  function writeFailureMessage(result, fallbackKey) {
+    if (result && result.error && result.error.key) {
+      return t(result.error.key, result.error.params);
+    }
+    return t(fallbackKey);
+  }
+
+  function isWriteFailure(result) {
+    return !result || result.ok === false;
+  }
+
+  function notifyWriteFailure(result, fallbackKey) {
+    UI.showToast(writeFailureMessage(result, fallbackKey), 'error');
+    syncStorageWarning();
+  }
+
+  function syncStorageWarning() {
+    if (!TTStorage.isReadAvailable()) {
+      UI.showStorageWarning(t('storage.warning.unavailable'));
+    } else if (TTStorage.isReadOnly()) {
+      UI.showStorageWarning(t('storage.warning.readOnly'));
+    } else {
+      UI.hideStorageWarning();
+    }
+
+    UI.setRawExportVisible(
+      !TTStorage.isReadAvailable() || TTStorage.isReadOnly()
+    );
+  }
+
   function init() {
     form = document.getElementById('lesson-form');
     list = document.getElementById('lesson-list');
@@ -55,11 +109,9 @@
     I18N.apply(document);
     UI.init();
 
-    // 读取数据（顺带触发可用性检测、旧数据迁移和损坏数据的兜底）
+    // 读取数据（顺带触发迁移和损坏数据的兜底）
     TTStorage.load();
-    if (!TTStorage.isPersistent()) {
-      UI.showStorageWarning(t('storage.warning.unavailable'));
-    }
+    syncStorageWarning();
 
     var loadError = TTStorage.getLastError();
     if (loadError) UI.showToast(t(loadError.key, loadError.params), 'error');
@@ -117,6 +169,15 @@
     bindRateStep(document.getElementById('edit-rate'));
 
     list.addEventListener('click', handleListClick);
+    document.getElementById('ledger-list').addEventListener('click', handleListClick);
+    document.getElementById('outstanding-list').addEventListener('click', handleListClick);
+
+    document.getElementById('stats-month').addEventListener('change', handleStatsMonthChange);
+    document.getElementById('ledger-student').addEventListener('input', handleLedgerFilterInput);
+    document.getElementById('ledger-subject').addEventListener('input', handleLedgerFilterInput);
+    document.getElementById('ledger-status').addEventListener('change', handleLedgerFilterInput);
+    document.getElementById('ledger-reset').addEventListener('click', handleLedgerReset);
+    document.getElementById('ledger-export').addEventListener('click', handleExportLedger);
 
     var lessonEditForm = document.getElementById('lesson-edit-form');
     var lessonDialog = document.getElementById('lesson-dialog');
@@ -131,9 +192,11 @@
     // 原生 Esc 关闭、点击遮罩关闭都会触发 close，统一在这里清理编辑状态
     lessonDialog.addEventListener('close', function () {
       state.editingLessonId = null;
+      state.editingLessonFingerprint = null;
     });
     lessonDialog.addEventListener('cancel', function () {
       state.editingLessonId = null;
+      state.editingLessonFingerprint = null;
     });
     lessonDialog.addEventListener('click', function (event) {
       if (event.target === lessonDialog) closeLessonEditor();
@@ -171,6 +234,7 @@
     analysisMonthSelect.addEventListener('change', handleAnalysisMonthChange);
 
     document.getElementById('export-backup').addEventListener('click', handleExportBackup);
+    document.getElementById('export-raw').addEventListener('click', handleExportRawData);
     document.getElementById('import-trigger').addEventListener('click', function () {
       importFile.click();
     });
@@ -183,9 +247,55 @@
     }
     document.addEventListener('tutortrack:languagechange', applyLanguage);
 
+    global.addEventListener('storage', function (event) {
+      if (event.key !== TTStorage.KEY && event.key !== null) return;
+      if (event.storageArea && event.storageArea !== global.localStorage) return;
+      if (!TTStorage.reload()) {
+        syncStorageWarning();
+        return;
+      }
+
+      syncStorageWarning();
+
+      var conflict = false;
+
+      if (state.editingLessonId) {
+        var liveLesson = findLesson(state.editingLessonId);
+        if (
+          !liveLesson ||
+          lessonFingerprint(liveLesson) !== state.editingLessonFingerprint
+        ) {
+          state.editingLessonId = null;
+          state.editingLessonFingerprint = null;
+          UI.closeLessonEditor();
+          conflict = true;
+        }
+      }
+
+      if (state.editingStudentId) {
+        var liveStudent = findStudent(state.editingStudentId);
+        if (
+          !liveStudent ||
+          studentFingerprint(liveStudent) !== state.editingStudentFingerprint
+        ) {
+          state.editingStudentId = null;
+          state.editingStudentFingerprint = null;
+          UI.resetStudentForm();
+          conflict = true;
+        }
+      }
+
+      render();
+      UI.showToast(
+        t(conflict ? 'storage.editConflict' : 'storage.externalChange'),
+        conflict ? 'error' : ''
+      );
+    });
+
     // 页面从后台切回来时，如果跨月或跨年了就刷新统计
     document.addEventListener('visibilitychange', function () {
       if (document.visibilityState !== 'visible') return;
+      if (!state.followCurrentMonth) return;
 
       var monthKey = Calc.currentMonthKey();
       var yearKey = Calc.currentYearKey();
@@ -205,6 +315,7 @@
   function applyLanguage() {
     I18N.apply(document);
     syncLanguageSelect();
+    syncStorageWarning();
 
     if (state.editingStudentId) {
       var student = findStudent(state.editingStudentId);
@@ -254,6 +365,33 @@
     return null;
   }
 
+  function studentFingerprint(student) {
+    if (!student) return '';
+    return JSON.stringify([
+      student.id,
+      student.name,
+      student.grade,
+      student.subject,
+      student.hourlyRateCents,
+      student.createdAt
+    ]);
+  }
+
+  function lessonFingerprint(lesson) {
+    if (!lesson) return '';
+    return JSON.stringify([
+      lesson.id,
+      lesson.studentId,
+      lesson.student,
+      lesson.date,
+      lesson.duration,
+      lesson.hourlyRateCents,
+      lesson.feeCents,
+      lesson.paid,
+      lesson.createdAt
+    ]);
+  }
+
   function findLesson(id) {
     var lessons = TTStorage.getLessons();
     for (var i = 0; i < lessons.length; i += 1) {
@@ -274,8 +412,8 @@
     };
   }
 
-  /** 校验记课表单，返回 { 字段名: 错误信息 } */
-  function validate(values) {
+  /** 校验记课表单，返回 { 字段名: 错误信息 }。original 用于编辑历史课程时保留未修改的超限计费字段 */
+  function validate(values, original) {
     var errors = {};
 
     if (!values.studentId) {
@@ -291,27 +429,27 @@
     }
 
     var duration = Number(values.duration);
+    var durationUnchanged = Boolean(original) &&
+      values.duration !== '' &&
+      duration === original.duration;
     if (values.duration === '') {
       errors.duration = t('validation.lesson.durationRequired');
     } else if (!Number.isFinite(duration) || !Number.isInteger(duration)) {
       errors.duration = t('validation.lesson.durationInteger');
-    } else if (duration < 1 || duration > 1440) {
+    } else if (!durationUnchanged && (duration < 1 || duration > 1440)) {
       errors.duration = t('validation.lesson.durationRange');
     }
 
-    var rate = Number(values.rate);
-    if (values.rate === '') {
-      errors.rate = t('validation.lesson.rateRequired');
-    } else if (!Number.isFinite(rate)) {
-      errors.rate = t('validation.lesson.rateNumber');
-    } else if (rate < 0 || rate > 10000) {
-      errors.rate = t('validation.lesson.rateRange');
+    var rate = Calc.parseYuanInput(values.rate);
+    var rateUnchanged = isRateUnchanged(values.rate, original);
+    if (!rate.ok && !rateUnchanged) {
+      errors.rate = t(rateErrorKey('validation.lesson', rate));
     }
 
     return errors;
   }
 
-  function handleSubmit(event) {
+  async function handleSubmit(event) {
     event.preventDefault();
 
     var values = readForm();
@@ -323,15 +461,21 @@
       return;
     }
 
-    var result = TTStorage.addLesson({
-      studentId: values.studentId,
-      date: values.date,
-      duration: Number(values.duration),
-      rate: Number(values.rate)
-    });
-
-    if (!result) {
+    var result;
+    try {
+      result = await TTStorage.addLesson({
+        studentId: values.studentId,
+        date: values.date,
+        duration: Number(values.duration),
+        hourlyRateCents: Calc.parseYuanInput(values.rate).cents
+      });
+    } catch (error) {
       UI.showToast(t('toast.lesson.addFailed'), 'error');
+      return;
+    }
+
+    if (isWriteFailure(result)) {
+      notifyWriteFailure(result, 'toast.lesson.addFailed');
       return;
     }
 
@@ -339,14 +483,10 @@
     UI.setIncomePreview(null);
     render();
 
-    if (result.saved) {
-      UI.showToast(t('toast.lesson.added', {
-        student: result.lesson.student,
-        duration: Calc.minutesToText(result.lesson.duration)
-      }), 'success');
-    } else {
-      UI.showToast(t('toast.lesson.addedUnsaved'), 'error');
-    }
+    UI.showToast(t('toast.lesson.added', {
+      student: result.lesson.student,
+      duration: Calc.minutesToText(result.lesson.duration)
+    }), 'success');
 
     UI.focusStudent();
   }
@@ -359,7 +499,7 @@
       return;
     }
 
-    UI.setLessonRate(student.rate);
+    UI.setLessonRate(student.hourlyRateCents);
     handlePreview();
   }
 
@@ -367,23 +507,21 @@
   function handlePreview() {
     var values = readForm();
     var duration = Number(values.duration);
-    var rate = Number(values.rate);
+    var rate = Calc.parseYuanInput(values.rate);
 
     var valid =
       values.duration !== '' &&
-      values.rate !== '' &&
       Number.isFinite(duration) &&
-      Number.isFinite(rate) &&
       duration > 0 &&
-      rate >= 0;
+      rate.ok;
 
     if (!valid) {
       UI.setIncomePreview(null);
       return;
     }
 
-    var income = Calc.lessonIncome({ duration: duration, rate: rate });
-    UI.setIncomePreview(I18N.formatCurrency(income));
+    var feeCents = Calc.lessonFeeCentsFromRate(rate.cents, duration);
+    UI.setIncomePreview(I18N.formatCurrencyCents(feeCents));
   }
 
   /** 输入法还在选词时按回车，不要提交表单 */
@@ -393,7 +531,7 @@
     }
   }
 
-  function handleListClick(event) {
+  async function handleListClick(event) {
     var button = event.target.closest('button[data-action]');
     if (!button) return;
 
@@ -401,7 +539,7 @@
     var id = button.dataset.id;
 
     if (action === 'toggle-paid') {
-      handleTogglePaid(id);
+      await handleTogglePaid(id);
       return;
     }
 
@@ -425,29 +563,30 @@
     });
     if (!global.confirm(message)) return;
 
-    var result = TTStorage.removeLesson(id);
-    if (!result.removed) {
+    var result;
+    try {
+      result = await TTStorage.removeLesson(id);
+    } catch (error) {
       UI.showToast(t('toast.lesson.deleteFailed'), 'error');
-      render();
+      return;
+    }
+    if (isWriteFailure(result) || !result.removed) {
+      notifyWriteFailure(result, 'toast.lesson.deleteFailed');
       return;
     }
 
     if (state.editingLessonId === id) {
       state.editingLessonId = null;
+      state.editingLessonFingerprint = null;
       UI.closeLessonEditor();
     }
 
     render();
-
-    if (result.saved) {
-      UI.showToast(t('toast.lesson.deleted'), 'success');
-    } else {
-      UI.showToast(t('toast.lesson.deletedUnsaved'), 'error');
-    }
+    UI.showToast(t('toast.lesson.deleted'), 'success');
   }
 
   /** 在「待收款 / 已收款」之间切换 */
-  function handleTogglePaid(id) {
+  async function handleTogglePaid(id) {
     var target = findLesson(id);
     if (!target) {
       UI.showToast(t('toast.lesson.missing'), 'error');
@@ -456,26 +595,57 @@
     }
 
     var nextPaid = !Calc.isPaid(target);
-    var result = TTStorage.setLessonPaid(id, nextPaid);
-    if (!result) {
-      UI.showToast(t('toast.lesson.updateMissing'), 'error');
-      render();
+    var result;
+    try {
+      result = await TTStorage.setLessonPaid(id, nextPaid);
+    } catch (error) {
+      UI.showToast(t('toast.lesson.updateFailed'), 'error');
+      return;
+    }
+    if (isWriteFailure(result)) {
+      notifyWriteFailure(result, 'toast.lesson.updateFailed');
       return;
     }
 
     render();
+    UI.showToast(
+      t(nextPaid ? 'toast.lesson.paidMarked' : 'toast.lesson.unpaidMarked'),
+      'success',
+      {
+        label: t('common.undo'),
+        onClick: function () {
+          handleUndoPaid(id, nextPaid);
+        }
+      }
+    );
+  }
 
-    if (result.saved) {
-      UI.showToast(
-        t(nextPaid ? 'toast.lesson.paidMarked' : 'toast.lesson.unpaidMarked'),
-        'success'
-      );
-    } else {
-      UI.showToast(
-        t(nextPaid ? 'toast.lesson.paidMarkedUnsaved' : 'toast.lesson.unpaidMarkedUnsaved'),
-        'error'
-      );
+  /** 撤销刚才的收款状态切换 */
+  async function handleUndoPaid(id, changedToPaid) {
+    var target = findLesson(id);
+    if (!target) {
+      UI.showToast(t('toast.lesson.missing'), 'error');
+      render();
+      return;
     }
+
+    var result;
+    try {
+      result = await TTStorage.setLessonPaid(id, !changedToPaid);
+    } catch (error) {
+      UI.showToast(t('toast.lesson.updateFailed'), 'error');
+      return;
+    }
+    if (isWriteFailure(result)) {
+      notifyWriteFailure(result, 'toast.lesson.updateFailed');
+      return;
+    }
+
+    render();
+    UI.showToast(
+      t(changedToPaid ? 'toast.lesson.undoPaid' : 'toast.lesson.undoUnpaid'),
+      'success'
+    );
   }
 
   /** 打开编辑弹窗 */
@@ -488,10 +658,11 @@
     }
 
     state.editingLessonId = id;
+    state.editingLessonFingerprint = lessonFingerprint(target);
     UI.openLessonEditor(target, TTStorage.getStudents());
   }
 
-  function handleLessonEditSubmit(event) {
+  async function handleLessonEditSubmit(event) {
     event.preventDefault();
 
     var id = state.editingLessonId;
@@ -501,7 +672,8 @@
     }
 
     var values = UI.readLessonEditor();
-    var errors = validate(values);
+    var original = findLesson(id);
+    var errors = validate(values, original);
 
     UI.clearEditErrors();
     if (Object.keys(errors).length > 0) {
@@ -509,32 +681,39 @@
       return;
     }
 
-    var result = TTStorage.updateLesson(id, {
-      studentId: values.studentId,
-      date: values.date,
-      duration: Number(values.duration),
-      rate: Number(values.rate),
-      paid: values.paid === 'paid'
-    });
-
-    if (!result) {
+    var result;
+    var rate = Calc.parseYuanInput(values.rate);
+    var hourlyRateCents = rate.ok
+      ? rate.cents
+      : (original ? original.hourlyRateCents : null);
+    try {
+      result = await TTStorage.updateLesson(id, {
+        studentId: values.studentId,
+        date: values.date,
+        duration: Number(values.duration),
+        hourlyRateCents: hourlyRateCents,
+        paid: values.paid === 'paid'
+      });
+    } catch (error) {
       UI.showToast(t('toast.lesson.updateFailed'), 'error');
       return;
     }
 
+    if (isWriteFailure(result)) {
+      notifyWriteFailure(result, 'toast.lesson.updateFailed');
+      return;
+    }
+
     state.editingLessonId = null;
+    state.editingLessonFingerprint = null;
     UI.closeLessonEditor();
     render();
-
-    if (result.saved) {
-      UI.showToast(t('toast.lesson.updated'), 'success');
-    } else {
-      UI.showToast(t('toast.lesson.updatedUnsaved'), 'error');
-    }
+    UI.showToast(t('toast.lesson.updated'), 'success');
   }
 
   function closeLessonEditor() {
     state.editingLessonId = null;
+    state.editingLessonFingerprint = null;
     UI.closeLessonEditor();
   }
 
@@ -556,7 +735,7 @@
     };
   }
 
-  function validateStudent(values) {
+  function validateStudent(values, original) {
     var errors = {};
 
     if (!values.name) {
@@ -565,23 +744,21 @@
       errors.name = t('validation.student.nameTooLong');
     }
 
-    var rate = Number(values.rate);
-    if (values.rate === '') {
-      errors.rate = t('validation.student.rateRequired');
-    } else if (!Number.isFinite(rate)) {
-      errors.rate = t('validation.student.rateNumber');
-    } else if (rate < 0 || rate > 10000) {
-      errors.rate = t('validation.student.rateRange');
+    var rate = Calc.parseYuanInput(values.rate);
+    var rateUnchanged = isRateUnchanged(values.rate, original);
+    if (!rate.ok && !rateUnchanged) {
+      errors.rate = t(rateErrorKey('validation.student', rate));
     }
 
     return errors;
   }
 
-  function handleStudentSubmit(event) {
+  async function handleStudentSubmit(event) {
     event.preventDefault();
 
     var values = readStudentForm();
-    var errors = validateStudent(values);
+    var original = state.editingStudentId ? findStudent(state.editingStudentId) : null;
+    var errors = validateStudent(values, original);
 
     UI.clearStudentErrors();
     if (Object.keys(errors).length > 0) {
@@ -591,17 +768,32 @@
 
     var wasEditing = Boolean(state.editingStudentId);
     var hadSelection = Boolean(UI.getLessonStudentId());
+    var rate = Calc.parseYuanInput(values.rate);
+    var rateUnchanged = isRateUnchanged(values.rate, original);
+    var payload = {
+      name: values.name,
+      grade: values.grade,
+      subject: values.subject,
+      hourlyRateCents: rate.ok ? rate.cents : (rateUnchanged ? original.hourlyRateCents : null)
+    };
 
-    var result = wasEditing
-      ? TTStorage.updateStudent(state.editingStudentId, values)
-      : TTStorage.addStudent(values);
-
-    if (!result) {
+    var result;
+    try {
+      result = wasEditing
+        ? await TTStorage.updateStudent(state.editingStudentId, payload)
+        : await TTStorage.addStudent(payload);
+    } catch (error) {
       UI.showToast(t('toast.student.saveFailed'), 'error');
       return;
     }
 
+    if (isWriteFailure(result)) {
+      notifyWriteFailure(result, 'toast.student.saveFailed');
+      return;
+    }
+
     state.editingStudentId = null;
+    state.editingStudentFingerprint = null;
     UI.resetStudentForm();
     render();
 
@@ -611,26 +803,17 @@
       handlePreview();
     }
 
-    if (result.saved) {
-      UI.showToast(
-        t(wasEditing ? 'toast.student.saved' : 'toast.student.added', {
-          name: result.student.name
-        }),
-        'success'
-      );
-    } else {
-      UI.showToast(
-        t(wasEditing ? 'toast.student.savedUnsaved' : 'toast.student.addedUnsaved', {
-          name: result.student.name
-        }),
-        'error'
-      );
-    }
+    UI.showToast(
+      t(wasEditing ? 'toast.student.saved' : 'toast.student.added', {
+        name: result.student.name
+      }),
+      'success'
+    );
 
     UI.focusStudentName();
   }
 
-  function handleStudentListClick(event) {
+  async function handleStudentListClick(event) {
     var editButton = event.target.closest('button[data-action="edit-student"]');
     var deleteButton = event.target.closest('button[data-action="delete-student"]');
 
@@ -643,6 +826,7 @@
       }
 
       state.editingStudentId = student.id;
+      state.editingStudentFingerprint = studentFingerprint(student);
       render();
       UI.setStudentFormMode('edit', student);
       return;
@@ -670,30 +854,32 @@
       : t('confirm.deleteStudentNoLessons', { name: target.name });
     if (!global.confirm(message)) return;
 
-    var result = TTStorage.removeStudent(target.id);
-    if (!result.removed) {
+    var result;
+    try {
+      result = await TTStorage.removeStudent(target.id);
+    } catch (error) {
       UI.showToast(t('toast.student.deleteFailed'), 'error');
-      render();
+      return;
+    }
+    if (isWriteFailure(result) || !result.removed) {
+      notifyWriteFailure(result, 'toast.student.deleteFailed');
       return;
     }
 
     if (state.editingStudentId === target.id) {
       state.editingStudentId = null;
+      state.editingStudentFingerprint = null;
       UI.resetStudentForm();
     }
 
     render();
-
-    if (result.saved) {
-      UI.showToast(t('toast.student.deleted', { name: target.name }), 'success');
-    } else {
-      UI.showToast(t('toast.student.deletedUnsaved'), 'error');
-    }
+    UI.showToast(t('toast.student.deleted', { name: target.name }), 'success');
   }
 
   function handleCancelStudentEdit() {
     if (!state.editingStudentId) return;
     state.editingStudentId = null;
+    state.editingStudentFingerprint = null;
     UI.resetStudentForm();
     render();
   }
@@ -801,10 +987,7 @@
 
   /* ---------------- 数据备份与恢复 ---------------- */
 
-  function handleExportBackup() {
-    var backup = TTStorage.createBackup();
-    var json = JSON.stringify(backup, null, 2);
-    var filename = 'TutorTrack-backup-' + Calc.toDateString(new Date()) + '.json';
+  function downloadTextFile(content, filename, mime) {
     var link = document.createElement('a');
     var url = '';
 
@@ -816,17 +999,14 @@
         global.URL &&
         typeof global.URL.createObjectURL === 'function'
       ) {
-        var blob = new global.Blob([json], {
-          type: 'application/json;charset=utf-8'
-        });
+        var blob = new global.Blob([content], { type: mime });
         url = global.URL.createObjectURL(blob);
         link.href = url;
       } else {
-        link.href = 'data:application/json;charset=utf-8,' + encodeURIComponent(json);
+        link.href = 'data:' + mime + ',' + encodeURIComponent(content);
       }
     } catch (error) {
-      UI.showToast(t('toast.export.failed'), 'error');
-      return;
+      return false;
     }
 
     document.body.appendChild(link);
@@ -839,9 +1019,134 @@
       }, 1000);
     }
 
+    return true;
+  }
+
+  function handleExportBackup() {
+    var backup = TTStorage.createBackup();
+
+    if (!backup) {
+      UI.showToast(t('toast.export.unavailable'), 'error');
+      syncStorageWarning();
+      return;
+    }
+
+    var json = JSON.stringify(backup, null, 2);
+    var filename = 'TutorTrack-backup-' + Calc.toDateString(new Date()) + '.json';
+
+    if (!downloadTextFile(json, filename, 'application/json;charset=utf-8')) {
+      UI.showToast(t('toast.export.failed'), 'error');
+      return;
+    }
+
     UI.showToast(t('toast.export.success', {
       students: I18N.countLong('students', backup.counts.students),
       lessons: I18N.countLong('records', backup.counts.lessons)
+    }), 'success');
+  }
+
+  /** 只读/加载失败时原样导出正式 KEY，不做任何解析或修正 */
+  function handleExportRawData() {
+    var result = TTStorage.getRawData();
+
+    if (!result.ok) {
+      UI.showToast(t('toast.export.rawReadFailed'), 'error');
+      return;
+    }
+    if (!result.exists) {
+      UI.showToast(t('toast.export.rawMissing'), 'error');
+      return;
+    }
+
+    var filename = 'TutorTrack-raw-' + Calc.toDateString(new Date()) + '.json';
+    if (!downloadTextFile(result.raw, filename, 'application/json;charset=utf-8')) {
+      UI.showToast(t('toast.export.rawFailed'), 'error');
+      return;
+    }
+
+    UI.showToast(t('toast.export.rawSuccess'), 'success');
+  }
+
+  /** 导出所选月份的完整账目，不受当前筛选影响 */
+  function handleExportLedger() {
+    TTStorage.reload();
+    var allLessons = TTStorage.getLessons();
+    var monthKey = state.monthKey;
+    var monthLessons = Calc.sortLessons(allLessons.filter(function (lesson) {
+      return Calc.monthKey(lesson.date) === monthKey;
+    }));
+
+    if (!monthLessons.length) {
+      UI.showToast(t('ledger.exportEmpty'), 'error');
+      return;
+    }
+
+    var students = TTStorage.getStudents();
+    var studentsById = indexStudents(students);
+    var summary = Calc.summarizeMonthPayments(allLessons, monthKey);
+    var base = Calc.summarize(allLessons, monthKey);
+    var lines = [];
+
+    function csvCell(value) {
+      var text = value === null || value === undefined ? '' : String(value);
+      if (/[",\r\n]/.test(text)) {
+        return '"' + text.replace(/"/g, '""') + '"';
+      }
+      return text;
+    }
+
+    function moneyCell(cents) {
+      return Calc.centsToYuanFixed(cents);
+    }
+
+    lines.push([t('ledger.csv.title'), Calc.monthLabel(monthKey)]);
+    lines.push([t('ledger.csv.month'), Calc.monthLabel(monthKey)]);
+    lines.push([t('ledger.csv.totalLessons'), monthLessons.length]);
+    lines.push([t('ledger.csv.totalMinutes'), base.totalMinutes]);
+    lines.push([t('ledger.csv.receivable'), moneyCell(summary.totalCents)]);
+    lines.push([t('ledger.csv.paid'), moneyCell(summary.paidCents)]);
+    lines.push([t('ledger.csv.unpaid'), moneyCell(summary.unpaidCents)]);
+    lines.push([]);
+    lines.push([
+      t('ledger.csv.date'),
+      t('ledger.csv.student'),
+      t('ledger.csv.subject'),
+      t('ledger.csv.duration'),
+      t('ledger.csv.rate'),
+      t('ledger.csv.amount'),
+      t('ledger.csv.status')
+    ]);
+
+    monthLessons.forEach(function (lesson) {
+      var student = lesson.studentId ? studentsById[lesson.studentId] : null;
+      var subject = student && student.subject ? student.subject : t('ledger.noSubject');
+      lines.push([
+        lesson.date,
+        Calc.resolveStudentName(lesson, studentsById),
+        subject,
+        lesson.duration,
+        moneyCell(lesson.hourlyRateCents),
+        moneyCell(Calc.lessonFeeCents(lesson)),
+        Calc.isPaid(lesson) ? t('status.paid') : t('status.unpaid')
+      ]);
+    });
+
+    var csv = lines.map(function (row) {
+      return row.map(csvCell).join(',');
+    }).join('\r\n');
+
+    if (!downloadTextFile(
+      '\uFEFF' + csv,
+      'TutorTrack-ledger-' + monthKey + '.csv',
+      'text/csv;charset=utf-8'
+    )) {
+      UI.showToast(t('toast.export.failed'), 'error');
+      return;
+    }
+
+    UI.showToast(t('ledger.exported', {
+      month: Calc.monthLabel(monthKey),
+      count: count('records', monthLessons.length)
     }), 'success');
   }
 
@@ -870,7 +1175,13 @@
         return;
       }
 
-      applyImportedBackup(parsed);
+      applyImportedBackup(parsed).catch(function () {
+        var message = t('import.failed', {
+          reason: t('storage.error.restoreWriteFailed')
+        });
+        UI.showImportStatus(message, 'error');
+        UI.showToast(message, 'error');
+      });
     };
 
     reader.onerror = function () {
@@ -881,7 +1192,7 @@
     reader.readAsText(file, 'utf-8');
   }
 
-  function applyImportedBackup(parsed) {
+  async function applyImportedBackup(parsed) {
     var validation = TTStorage.validateBackup(parsed);
 
     if (!validation.ok) {
@@ -912,19 +1223,32 @@
       return;
     }
 
-    var result = TTStorage.restoreBackup(parsed);
+    var result;
+    try {
+      result = await TTStorage.restoreBackup(parsed);
+    } catch (error) {
+      result = {
+        ok: false,
+        errorKey: 'storage.error.restoreWriteFailed',
+        params: null
+      };
+    }
+
     if (!result.ok) {
       var restoreMessage = t('import.failed', {
         reason: t(result.errorKey, result.params)
       });
       UI.showImportStatus(restoreMessage, 'error');
       UI.showToast(restoreMessage, 'error');
+      syncStorageWarning();
       return;
     }
 
     // 清理可能残留的编辑状态，并回到当前月份重新渲染
     state.editingStudentId = null;
+    state.editingStudentFingerprint = null;
     state.editingLessonId = null;
+    state.editingLessonFingerprint = null;
     UI.closeLessonEditor();
     UI.resetStudentForm();
     UI.resetForm();
@@ -936,7 +1260,16 @@
     state.analysisPeriod = 'month';
     state.analysisYear = Calc.currentYearKey();
     state.analysisMonthKey = Calc.currentMonthKey();
+    state.period = 'month';
+    state.monthKey = Calc.currentMonthKey();
+    state.yearKey = Calc.currentYearKey();
+    state.followCurrentMonth = true;
+    state.ledgerStudent = '';
+    state.ledgerSubject = '';
+    state.ledgerStatus = 'all';
+    UI.setLedgerFilterValues(state);
 
+    syncStorageWarning();
     render();
 
     var successMessage = t('import.success', {
@@ -949,14 +1282,51 @@
 
   /* ---------------- 统计范围 ---------------- */
 
+  function handleStatsMonthChange(event) {
+    var value = event.target.value;
+    if (!/^\d{4}-\d{2}$/.test(value)) return;
+
+    state.monthKey = value;
+    state.yearKey = value.slice(0, 4);
+    state.followCurrentMonth = value === Calc.currentMonthKey();
+    render();
+  }
+
+  function handleLedgerFilterInput() {
+    state.ledgerStudent = document.getElementById('ledger-student').value;
+    state.ledgerSubject = document.getElementById('ledger-subject').value;
+    state.ledgerStatus = document.getElementById('ledger-status').value;
+    renderLedgerOnly();
+  }
+
+  function handleLedgerReset() {
+    state.ledgerStudent = '';
+    state.ledgerSubject = '';
+    state.ledgerStatus = 'all';
+    UI.setLedgerFilterValues(state);
+    renderLedgerOnly();
+  }
+
+  function renderLedgerOnly() {
+    var students = TTStorage.getStudents();
+    var lessons = Calc.sortLessons(TTStorage.getLessons());
+    UI.renderLedger(lessons, indexStudents(students), {
+      monthKey: state.monthKey,
+      studentName: state.ledgerStudent,
+      subject: state.ledgerSubject,
+      status: state.ledgerStatus
+    });
+  }
+
   function handlePeriodClick(event) {
     var period = event.currentTarget.dataset.period;
     if (period !== 'month' && period !== 'year') return;
     if (period === state.period) return;
 
     state.period = period;
-    state.monthKey = Calc.currentMonthKey();
-    state.yearKey = Calc.currentYearKey();
+    if (/^\d{4}-\d{2}$/.test(state.monthKey)) {
+      state.yearKey = state.monthKey.slice(0, 4);
+    }
     render();
   }
 
@@ -1003,14 +1373,31 @@
       count: base.count,
       totalMinutes: base.totalMinutes,
       durationText: base.durationText,
-      totalIncome: payments.totalIncome,
-      paidIncome: payments.paidIncome,
-      unpaidIncome: payments.unpaidIncome,
+      totalCents: payments.totalCents,
+      paidCents: payments.paidCents,
+      unpaidCents: payments.unpaidCents,
       paidCount: payments.paidCount,
       unpaidCount: payments.unpaidCount
     };
 
-    UI.renderStats(summary, state.period, key);
+    var compareDelta = null;
+    if (state.period === 'month') {
+      var previousPayments = Calc.summarizeMonthPayments(
+        lessons,
+        Calc.shiftMonthKey(state.monthKey, -1)
+      );
+      compareDelta = payments.paidCents - previousPayments.paidCents;
+    }
+
+    UI.setStatsMonth(state.monthKey);
+    UI.renderStats(summary, state.period, key, compareDelta);
+    UI.renderLedger(lessons, studentsById, {
+      monthKey: state.monthKey,
+      studentName: state.ledgerStudent,
+      subject: state.ledgerSubject,
+      status: state.ledgerStatus
+    });
+    UI.renderOutstanding(lessons, studentsById);
     UI.renderCount(lessons.length);
 
     // 月度趋势：始终显示 12 个月，没有数据的月份为 0

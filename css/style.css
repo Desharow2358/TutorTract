@@ -211,6 +211,28 @@ select {
   gap: 10px;
 }
 
+.stats-month input {
+  width: auto;
+  padding: 6px 8px;
+  border-radius: 8px;
+  font-size: 0.8rem;
+}
+
+.stats-compare {
+  margin-top: 5px;
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
+.stats-compare[data-state="up"] {
+  color: var(--success);
+}
+
+.stats-compare[data-state="down"] {
+  color: var(--danger);
+}
+
 .segmented {
   display: inline-flex;
   gap: 2px;
@@ -334,7 +356,9 @@ select {
 }
 
 input[type="text"],
+input[type="search"],
 input[type="date"],
+input[type="month"],
 input[type="number"],
 select {
   width: 100%;
@@ -790,6 +814,10 @@ select.is-invalid {
   left: 50%;
   bottom: 24px;
   z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
   max-width: min(90vw, 440px);
   padding: 11px 20px;
   transform: translateX(-50%);
@@ -797,8 +825,28 @@ select.is-invalid {
   background: #16203a;
   color: #fff;
   font-size: 0.86rem;
-  text-align: center;
+  text-align: left;
   box-shadow: 0 16px 30px -16px rgba(0, 0, 0, 0.6);
+}
+
+.toast__text {
+  min-width: 0;
+}
+
+.toast__action {
+  flex: 0 0 auto;
+  padding: 4px 10px;
+  border: 0;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.18);
+  color: #fff;
+  font-size: 0.8rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.toast__action:hover {
+  background: rgba(255, 255, 255, 0.3);
 }
 
 .toast[data-state="success"] {
@@ -823,6 +871,142 @@ select.is-invalid {
   justify-content: flex-end;
   flex-wrap: wrap;
   gap: 10px;
+}
+
+/* ---------- 5.2 月度账目与未收款项 ---------- */
+.ledger-controls {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.ledger-filters {
+  display: flex;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.ledger-filter {
+  display: flex;
+  flex: 1 1 150px;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.ledger-filter input,
+.ledger-filter select {
+  padding: 8px 10px;
+  border-radius: 8px;
+  font-size: 0.82rem;
+}
+
+.ledger-reset {
+  flex: 0 0 auto;
+}
+
+.ledger-summary {
+  margin-bottom: 4px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: var(--surface-soft);
+  color: var(--ink-soft);
+  font-size: 0.8rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.ledger-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ledger-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 100px 150px 108px auto;
+  grid-template-areas: "who amount numbers status actions";
+  align-items: center;
+  gap: 10px;
+  padding: 12px 2px;
+  border-top: 1px solid var(--line);
+}
+
+.ledger-item:first-child {
+  border-top: 0;
+}
+
+.ledger-item__who {
+  grid-area: who;
+  min-width: 0;
+}
+
+.ledger-item__student {
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ledger-item__meta,
+.ledger-item__numbers {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 6px;
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.ledger-item__numbers {
+  grid-area: numbers;
+  color: var(--ink-soft);
+  font-size: 0.8rem;
+}
+
+.ledger-item__amount {
+  grid-area: amount;
+  color: var(--success);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.ledger-item [data-field="status"] {
+  grid-area: status;
+  justify-self: center;
+}
+
+.ledger-item__actions {
+  grid-area: actions;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 2px;
+}
+
+.ledger-export-note {
+  margin-top: 8px;
+}
+
+.outstanding-summary {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.outstanding-summary strong {
+  color: #9a6400;
+  font-size: 1.15rem;
+  font-variant-numeric: tabular-nums;
 }
 
 .calendar {
@@ -1409,6 +1593,47 @@ select.is-invalid {
   }
 
   .records-controls {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .ledger-controls {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .ledger-filters {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+  }
+
+  .ledger-filter {
+    flex: 1 1 auto;
+  }
+
+  .ledger-reset {
+    width: 100%;
+  }
+
+  .ledger-item {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      "who amount"
+      "numbers numbers"
+      "status actions";
+    row-gap: 6px;
+  }
+
+  .ledger-item [data-field="status"] {
+    justify-self: start;
+  }
+
+  .ledger-item__actions {
+    justify-content: flex-end;
+  }
+
+  .outstanding-summary {
     width: 100%;
     justify-content: space-between;
   }
